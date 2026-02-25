@@ -268,8 +268,6 @@ AI SDK integration tests use the OpenAI provider and require `OPENAI_API_KEY`.
 bun run test:integration
 ```
 
-Tests skip gracefully when the required API key is not configured.
-
 ## License
 
 MIT
