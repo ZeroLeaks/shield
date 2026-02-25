@@ -1,0 +1,97 @@
+{
+  "name": "@zeroleaks/shield",
+  "version": "1.1.0",
+  "description": "Runtime prompt security SDK — harden, detect injections, and sanitize LLM output",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./openai": {
+      "types": "./dist/providers/openai.d.ts",
+      "import": "./dist/providers/openai.mjs",
+      "require": "./dist/providers/openai.js"
+    },
+    "./anthropic": {
+      "types": "./dist/providers/anthropic.d.ts",
+      "import": "./dist/providers/anthropic.mjs",
+      "require": "./dist/providers/anthropic.js"
+    },
+    "./ai-sdk": {
+      "types": "./dist/providers/ai-sdk.d.ts",
+      "import": "./dist/providers/ai-sdk.mjs",
+      "require": "./dist/providers/ai-sdk.js"
+    },
+    "./groq": {
+      "types": "./dist/providers/groq.d.ts",
+      "import": "./dist/providers/groq.mjs",
+      "require": "./dist/providers/groq.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "bun run test && bun run build",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "benchmark": "bun run scripts/benchmark.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zeroleaks/shield"
+  },
+  "homepage": "https://zeroleaks.ai/docs/shield",
+  "bugs": {
+    "url": "https://github.com/zeroleaks/shield/issues"
+  },
+  "keywords": [
+    "llm",
+    "security",
+    "prompt-injection",
+    "ai-safety",
+    "openai",
+    "anthropic"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "openai": ">=4.0.0",
+    "@anthropic-ai/sdk": ">=0.20.0",
+    "ai": ">=3.0.0",
+    "groq-sdk": ">=0.3.0"
+  },
+  "peerDependenciesMeta": {
+    "openai": {
+      "optional": true
+    },
+    "@anthropic-ai/sdk": {
+      "optional": true
+    },
+    "ai": {
+      "optional": true
+    },
+    "groq-sdk": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@ai-sdk/openai": "^3.0.33",
+    "@anthropic-ai/sdk": "^0.78.0",
+    "ai": "^6.0.100",
+    "groq-sdk": "^0.37.0",
+    "openai": "^6.25.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
