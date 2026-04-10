@@ -1,3 +1,9 @@
+import {
+  type DetectNormalizationOptions,
+  normalizeForDetection,
+} from "./normalization";
+export type { DetectNormalizationOptions } from "./normalization";
+
 export interface DetectResult {
   detected: boolean;
   risk: "none" | "low" | "medium" | "high" | "critical";
@@ -10,6 +16,8 @@ export interface DetectResult {
 
 export interface DetectOptions {
   threshold?: "low" | "medium" | "high" | "critical";
+  /** Normalization profile applied before detection. Enabled by default. */
+  normalization?: false | DetectNormalizationOptions;
   customPatterns?: Array<{
     category: string;
     regex: RegExp;
@@ -79,82 +87,6 @@ const SUSPICIOUS_WORDS = new Set([
   "clearance",
   "internal",
 ]);
-const TYPO_MAP: Record<string, string> = {
-  ingnore: "ignore",
-  ignor: "ignore",
-  ign0re: "ignore",
-  previ0us: "previous",
-  previus: "previous",
-  instrucions: "instructions",
-  instrucion: "instruction",
-  overide: "override",
-  overrride: "override",
-  disreguard: "disregard",
-  disrega: "disregard",
-};
-const HOMOGLYPH_MAP: [string, string][] = [
-  ["\uFF21", "A"],
-  ["\uFF22", "B"],
-  ["\uFF23", "C"],
-  ["\uFF24", "D"],
-  ["\uFF25", "E"],
-  ["\uFF26", "F"],
-  ["\uFF27", "G"],
-  ["\uFF28", "H"],
-  ["\uFF29", "I"],
-  ["\uFF2A", "J"],
-  ["\uFF2B", "K"],
-  ["\uFF2C", "L"],
-  ["\uFF2D", "M"],
-  ["\uFF2E", "N"],
-  ["\uFF2F", "O"],
-  ["\uFF30", "P"],
-  ["\uFF31", "Q"],
-  ["\uFF32", "R"],
-  ["\uFF33", "S"],
-  ["\uFF34", "T"],
-  ["\uFF35", "U"],
-  ["\uFF36", "V"],
-  ["\uFF37", "W"],
-  ["\uFF38", "X"],
-  ["\uFF39", "Y"],
-  ["\uFF3A", "Z"],
-  ["\uFF41", "a"],
-  ["\uFF42", "b"],
-  ["\uFF43", "c"],
-  ["\uFF44", "d"],
-  ["\uFF45", "e"],
-  ["\uFF46", "f"],
-  ["\uFF47", "g"],
-  ["\uFF48", "h"],
-  ["\uFF49", "i"],
-  ["\uFF4A", "j"],
-  ["\uFF4B", "k"],
-  ["\uFF4C", "l"],
-  ["\uFF4D", "m"],
-  ["\uFF4E", "n"],
-  ["\uFF4F", "o"],
-  ["\uFF50", "p"],
-  ["\uFF51", "q"],
-  ["\uFF52", "r"],
-  ["\uFF53", "s"],
-  ["\uFF54", "t"],
-  ["\uFF55", "u"],
-  ["\uFF56", "v"],
-  ["\uFF57", "w"],
-  ["\uFF58", "x"],
-  ["\uFF59", "y"],
-  ["\uFF5A", "z"],
-  ["\u0430", "a"],
-  ["\u043E", "o"],
-  ["\u0435", "e"],
-  ["\u0440", "p"],
-  ["\u0441", "c"],
-  ["\u0445", "x"],
-  ["\u0456", "i"],
-  ["\u04CF", "d"],
-];
-
 const INJECTION_PATTERNS: PatternDef[] = [
   {
     category: "instruction_override",
@@ -321,64 +253,8 @@ const INJECTION_PATTERNS: PatternDef[] = [
 const RISK_ORDER = ["none", "low", "medium", "high", "critical"] as const;
 const DEFAULT_MAX_INPUT_LENGTH = 1024 * 1024;
 
-const RE_WHITESPACE = /\s+/g;
 const RE_WHITESPACE_SPLIT = /\s+/;
-const RE_WORD_CHAR = /\w/;
 const RE_SUSPICIOUS_STRUCTURE = /\[[\s\w]*\]|<!--[\s\w]*:/;
-const LEET_MAP: Record<string, string> = {
-  "0": "o",
-  "1": "i",
-  "4": "a",
-  "5": "s",
-  "7": "t",
-  "3": "e",
-  "@": "a",
-  "8": "b",
-  "9": "g",
-  "6": "g",
-  $: "s",
-  "!": "i",
-};
-
-function applyHomoglyphs(input: string): string {
-  let result = input;
-  for (const [from, to] of HOMOGLYPH_MAP) {
-    result = result.split(from).join(to);
-  }
-  return result;
-}
-
-function applyTypos(input: string): string {
-  let result = input;
-  for (const [typo, correct] of Object.entries(TYPO_MAP)) {
-    const escaped = typo.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const re = new RegExp(`\\b${escaped}\\b`, "gi");
-    result = result.replace(re, correct);
-  }
-  return result;
-}
-
-function normalizeInput(input: string): string {
-  let s = input.normalize("NFKC");
-  s = applyHomoglyphs(s);
-  s = s.replace(/[\u200B-\u200F\u2028-\u202F\uFEFF\u2060]/g, "");
-  s = s.replace(RE_WHITESPACE, " ");
-  s = s.replace(/(?<!\w)(\w)(\s+\w)+(?!\w)/g, (m) => {
-    const tokens = m.split(RE_WHITESPACE_SPLIT);
-    if (tokens.every((t) => t.length === 1 && RE_WORD_CHAR.test(t))) {
-      return tokens.join("");
-    }
-    return m;
-  });
-  for (const [from, to] of Object.entries(LEET_MAP)) {
-    s = s.replace(
-      new RegExp(from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"),
-      to
-    );
-  }
-  s = applyTypos(s);
-  return s.trim();
-}
 
 function fastPreFilter(s: string): boolean {
   const lower = s.toLowerCase();
@@ -472,7 +348,7 @@ export function detect(
   const bounded = input.length > maxLen ? input.slice(0, maxLen) : input;
   const scanLength = Math.min(bounded.length, DETECTION_SCAN_LENGTH);
   const toScan = bounded.slice(0, scanLength);
-  const normalized = normalizeInput(toScan);
+  const normalized = normalizeForDetection(toScan, options.normalization);
 
   const threshold = options.threshold || "medium";
   const thresholdIdx = RISK_ORDER.indexOf(threshold);
@@ -532,7 +408,7 @@ export async function detectAsync(
   options: DetectOptions = {}
 ): Promise<DetectResult> {
   const result = detect(input, options);
-  if (!result.detected || !options.secondaryDetector) {
+  if (!(result.detected && options.secondaryDetector)) {
     return result;
   }
   const override = await options.secondaryDetector(input, result);

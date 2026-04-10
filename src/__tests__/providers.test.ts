@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { InjectionDetectedError, LeakDetectedError } from "../errors";
+import { harden } from "../harden";
 import {
   shieldLanguageModelMiddleware,
   shieldMiddleware,
@@ -63,7 +64,7 @@ describe("shieldOpenAI", () => {
 
     const call = mock.chat.completions.create.mock.calls[0][0];
     const sysMsg = call.messages.find((m: any) => m.role === "system");
-    expect(sysMsg.content).toContain("Security Rules");
+    expect(sysMsg.content).toBe(harden("You are a bot."));
   });
 
   it("throws InjectionDetectedError on injection", async () => {
@@ -249,7 +250,7 @@ describe("shieldAnthropic", () => {
     const sysBlock = Array.isArray(call.system)
       ? call.system.find((b: any) => b.type === "text")
       : null;
-    expect(sysBlock?.text).toContain("Security Rules");
+    expect(sysBlock?.text).toBe(harden("You are a bot."));
   });
 
   it("sanitizes tool_use input when leaked", async () => {
@@ -421,7 +422,7 @@ describe("shieldMiddleware", () => {
     const textPart = (
       params.system as Array<{ type: string; text?: string }>
     ).find((p) => p.type === "text");
-    expect(textPart?.text).toContain("Security Rules");
+    expect(textPart?.text).toBe(harden("You are a bot."));
   });
 });
 

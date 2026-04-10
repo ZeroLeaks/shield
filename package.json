@@ -1,6 +1,6 @@
 {
   "name": "@zeroleaks/shield",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Runtime prompt security SDK — harden, detect injections, and sanitize LLM output",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -38,10 +38,10 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "bunx vitest run",
+    "test:watch": "bunx vitest",
     "prepublishOnly": "bun run test && bun run build",
-    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:integration": "bunx vitest run --config vitest.integration.config.ts",
     "benchmark": "bun run scripts/benchmark.ts"
   },
   "repository": {

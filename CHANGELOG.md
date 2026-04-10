@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-04-10
+
+### Added
+
+- **Default-on normalization pipeline:** `detect()` now normalizes homoglyphs, zero-width characters, whitespace-split tokens, leetspeak, common typos, and phonetic substitutions before matching injection patterns
+- **Configurable normalization controls:** `DetectOptions.normalization` allows callers to disable normalization entirely or tune individual repair stages
+
+### Changed
+
+- **Provider hardening tests:** Updated provider expectations to assert against the current `harden()` output instead of the removed `"Security Rules"` marker
+
 ## [1.1.0] - 2026-02-25
 
 ### Added

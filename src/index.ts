@@ -1,4 +1,5 @@
 export {
+  type DetectNormalizationOptions,
   type DetectOptions,
   type DetectResult,
   detect,
