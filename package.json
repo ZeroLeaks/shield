@@ -40,7 +40,8 @@
     "dev": "tsup --watch",
     "test": "bunx vitest run",
     "test:watch": "bunx vitest",
-    "prepublishOnly": "bun run test && bun run build",
+    "typecheck": "tsc --noEmit -p .",
+    "prepublishOnly": "bun run typecheck && bun run test && bun run build",
     "test:integration": "bunx vitest run --config vitest.integration.config.ts",
     "benchmark": "bun run scripts/benchmark.ts"
   },
@@ -48,7 +49,7 @@
     "type": "git",
     "url": "https://github.com/zeroleaks/shield"
   },
-  "homepage": "https://zeroleaks.ai/docs/shield",
+  "homepage": "https://zeroleaks.ai/docs/shield-sdk",
   "bugs": {
     "url": "https://github.com/zeroleaks/shield/issues"
   },
@@ -84,7 +85,10 @@
   "devDependencies": {
     "@ai-sdk/openai": "^3.0.33",
     "@anthropic-ai/sdk": "^0.78.0",
-    "ai": "^6.0.100",
+    "@types/node": "^26.1.1",
+    "ai": "^6.0.292",
+    "ai-v4": "npm:ai@^4.3.19",
+    "ai-v5": "npm:ai@^5.0.267",
     "groq-sdk": "^0.37.0",
     "openai": "^6.25.0",
     "tsup": "^8.5.1",

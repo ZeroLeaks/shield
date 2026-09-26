@@ -5,6 +5,16 @@ export interface SanitizeResult {
   sanitized: string;
 }
 
+/** A `sanitize` result that also says where each redaction was made. */
+export interface RedactedSanitizeResult extends SanitizeResult {
+  /**
+   * Sorted, disjoint `[start, end)` offsets of the output that `sanitized`
+   * replaces with `redactionText`.
+   */
+  redactions: [number, number][];
+  redactionText: string;
+}
+
 export interface SanitizeOptions {
   ngramSize?: number;
   threshold?: number;
@@ -105,6 +115,34 @@ function findMatchingSubstrings(
   return matches;
 }
 
+/**
+ * Finds where each fragment matches in `output`. Matched text is masked
+ * before the next pattern runs, so the ranges never overlap.
+ */
+function locateRedactions(
+  output: string,
+  fragments: string[],
+  minWords: number
+): [number, number][] {
+  const redactions: [number, number][] = [];
+  let masked = output;
+  for (const fragment of fragments) {
+    const words = fragment.split(" ");
+    for (let len = words.length; len >= minWords; len--) {
+      const sub = words.slice(0, len).join(" ");
+      const regex = new RegExp(
+        sub.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+"),
+        "gi"
+      );
+      masked = masked.replace(regex, (match: string, start: number) => {
+        redactions.push([start, start + match.length]);
+        return "\0".repeat(match.length);
+      });
+    }
+  }
+  return redactions.sort((a, b) => a[0] - b[0]);
+}
+
 const SANITIZE_MAX_OUTPUT_LENGTH = 1024 * 1024;
 
 export function sanitize(
@@ -112,6 +150,20 @@ export function sanitize(
   systemPrompt: string,
   options: SanitizeOptions = {}
 ): SanitizeResult {
+  const { leaked, confidence, fragments, sanitized } = sanitizeWithRedactions(
+    output,
+    systemPrompt,
+    options
+  );
+  return { leaked, confidence, fragments, sanitized };
+}
+
+export function sanitizeWithRedactions(
+  output: string,
+  systemPrompt: string,
+  options: SanitizeOptions = {}
+): RedactedSanitizeResult {
+  const redactionText = options.redactionText || "[REDACTED]";
   if (
     !output ||
     typeof output !== "string" ||
@@ -123,6 +175,8 @@ export function sanitize(
       confidence: 0,
       fragments: [],
       sanitized: output || "",
+      redactions: [],
+      redactionText,
     };
   }
 
@@ -133,7 +187,6 @@ export function sanitize(
   const ngramSize = options.ngramSize ?? 4;
   const threshold = options.threshold ?? 0.7;
   const wordOverlapThreshold = options.wordOverlapThreshold ?? 0.25;
-  const redactionText = options.redactionText || "[REDACTED]";
 
   const promptTokens = tokenize(systemPrompt);
   const outputTokens = tokenize(boundedOutput);
@@ -145,6 +198,8 @@ export function sanitize(
       confidence: 0,
       fragments: [],
       sanitized: boundedOutput,
+      redactions: [],
+      redactionText,
     };
   }
 
@@ -197,30 +252,30 @@ export function sanitize(
       confidence,
       fragments: [],
       sanitized: boundedOutput,
+      redactions: [],
+      redactionText,
     };
   }
 
   const allFragments = [...new Set([...fragments, ...smallFragments])];
+  const redactions = options.detectOnly
+    ? []
+    : locateRedactions(boundedOutput, allFragments, effectiveNgram);
 
-  let sanitized = boundedOutput;
-  if (!options.detectOnly) {
-    for (const fragment of allFragments) {
-      const words = fragment.split(" ");
-      for (let len = words.length; len >= effectiveNgram; len--) {
-        const sub = words.slice(0, len).join(" ");
-        const regex = new RegExp(
-          sub.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+"),
-          "gi"
-        );
-        sanitized = sanitized.replace(regex, redactionText);
-      }
-    }
+  let sanitized = "";
+  let pos = 0;
+  for (const [start, end] of redactions) {
+    sanitized += boundedOutput.slice(pos, start) + redactionText;
+    pos = end;
   }
+  sanitized += boundedOutput.slice(pos);
 
   return {
     leaked: true,
     confidence,
     fragments: allFragments,
     sanitized,
+    redactions,
+    redactionText,
   };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sanitize, sanitizeObject } from "../sanitize";
+import { sanitize, sanitizeObject, sanitizeWithRedactions } from "../sanitize";
 
 const SYSTEM_PROMPT =
   "You are a financial advisor. Never share account numbers. Always verify identity before disclosing balances. Your secret code is OMEGA-7.";
@@ -76,6 +76,21 @@ describe("sanitize", () => {
     );
     expect(result.confidence).toBeGreaterThanOrEqual(0);
     expect(result.confidence).toBeLessThanOrEqual(1);
+  });
+
+  it("reports the offsets of each redaction", () => {
+    const output =
+      "Sure! Never share account numbers. Always verify identity before disclosing balances.";
+    const result = sanitizeWithRedactions(output, SYSTEM_PROMPT);
+
+    expect(result.sanitized).toBe(sanitize(output, SYSTEM_PROMPT).sanitized);
+    expect(result.sanitized).toBe("Sure! [REDACTED]. Always [REDACTED].");
+    expect(
+      result.redactions.map(([start, end]) => output.slice(start, end))
+    ).toEqual([
+      "Never share account numbers",
+      "verify identity before disclosing balances",
+    ]);
   });
 
   it("sanitizeObject sanitizes string values in objects", () => {

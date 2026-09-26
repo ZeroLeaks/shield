@@ -27,7 +27,7 @@ const runIntegration = !!OPENAI_API_KEY;
           system: "You are helpful. Reply with exactly: OK",
           prompt: "Hi",
         }),
-        maxTokens: 10,
+        maxOutputTokens: 10,
       });
 
       expect(result.text).toBeDefined();

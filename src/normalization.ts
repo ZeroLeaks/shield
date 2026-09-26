@@ -145,17 +145,18 @@ const PHONETIC_PATTERNS: Array<[RegExp, string]> = [
   [/\brulz\b/gi, "rules"],
 ];
 
-export const DEFAULT_DETECT_NORMALIZATION: ResolvedDetectNormalizationOptions = {
-  enabled: true,
-  foldHomoglyphs: true,
-  stripInvisible: true,
-  collapseWhitespace: true,
-  joinSeparatedLetters: true,
-  normalizeCase: true,
-  decodeLeetspeak: true,
-  repairTypos: true,
-  repairPhonetics: true,
-};
+export const DEFAULT_DETECT_NORMALIZATION: ResolvedDetectNormalizationOptions =
+  {
+    enabled: true,
+    foldHomoglyphs: true,
+    stripInvisible: true,
+    collapseWhitespace: true,
+    joinSeparatedLetters: true,
+    normalizeCase: true,
+    decodeLeetspeak: true,
+    repairTypos: true,
+    repairPhonetics: true,
+  };
 
 function applyHomoglyphs(input: string): string {
   let result = input;
@@ -172,7 +173,9 @@ function collapseWhitespace(input: string): string {
 function joinSeparatedLetters(input: string): string {
   return input.replace(/(?<!\w)(\w)(\s+\w)+(?!\w)/g, (match) => {
     const tokens = match.split(RE_WHITESPACE_SPLIT);
-    if (tokens.every((token) => token.length === 1 && RE_WORD_CHAR.test(token))) {
+    if (
+      tokens.every((token) => token.length === 1 && RE_WORD_CHAR.test(token))
+    ) {
       return tokens.join("");
     }
     return match;

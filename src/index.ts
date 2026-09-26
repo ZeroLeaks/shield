@@ -13,6 +13,7 @@ export {
 export { type HardenOptions, harden } from "./harden";
 export {
   type ShieldAISdkOptions,
+  type ShieldLanguageModelMiddleware,
   shieldLanguageModelMiddleware,
   shieldMiddleware,
 } from "./providers/ai-sdk";

@@ -1,14 +1,11 @@
-import {
-  type DetectOptions,
-  type DetectResult,
-  detectAsync,
-} from "../detect";
+import { type DetectOptions, type DetectResult, detectAsync } from "../detect";
 import { InjectionDetectedError, LeakDetectedError } from "../errors";
 import { type HardenOptions, harden } from "../harden";
 import {
   type SanitizeOptions,
   type SanitizeResult,
   sanitize,
+  sanitizeWithRedactions,
 } from "../sanitize";
 import {
   chunkString,
@@ -48,9 +45,9 @@ function isAsyncIterable<T>(value: unknown): value is AsyncIterable<T> {
 }
 
 export function shieldOpenAI<
-  T extends {
-    chat: { completions: { create: (...args: unknown[]) => unknown } };
-  },
+  // Method syntax makes the parameter check bivariant, so the SDK client's
+  // `create` overloads, which take specific param types, satisfy it.
+  T extends { chat: { completions: { create(...args: unknown[]): unknown } } },
 >(client: T, options: ShieldOpenAIOptions = {}): T {
   const originalCreate = client.chat.completions.create.bind(
     client.chat.completions
@@ -127,42 +124,36 @@ export function shieldOpenAI<
 
       if (streamMode === "chunked") {
         const chunkSize = options.streamingChunkSize ?? 8192;
-        const sanitizeFn = (o: string, p: string) => {
-          const r = sanitize(o, p, sanitizeOpts);
-          return { sanitized: r.sanitized, leaked: r.leaked };
-        };
+        const sanitizeFn = (o: string, p: string) =>
+          sanitizeWithRedactions(o, p, sanitizeOpts);
         return (async function* () {
           let hadLeak = false;
-          try {
-            for await (const result of sanitizeTextStreamChunked(
-              openAIStreamToText(
-                response as AsyncIterable<{
-                  choices?: Array<{ delta?: { content?: string } }>;
-                }>
-              ),
-              derivedSystemPrompt,
-              sanitizeFn,
-              chunkSize
-            )) {
-              if (result.leaked) {
-                hadLeak = true;
-                options.onLeakDetected?.({
-                  leaked: true,
-                  confidence: 1,
-                  fragments: [],
-                  sanitized: result.sanitized,
-                });
-              }
-              if (result.sanitized) {
-                for (const c of chunkString(result.sanitized)) {
-                  yield {
-                    choices: [{ delta: { content: c }, index: 0 }],
-                  };
-                }
+          for await (const result of sanitizeTextStreamChunked(
+            openAIStreamToText(
+              response as AsyncIterable<{
+                choices?: Array<{ delta?: { content?: string } }>;
+              }>
+            ),
+            derivedSystemPrompt,
+            sanitizeFn,
+            chunkSize
+          )) {
+            if (result.leaked) {
+              hadLeak = true;
+              options.onLeakDetected?.({
+                leaked: true,
+                confidence: 1,
+                fragments: [],
+                sanitized: result.sanitized,
+              });
+            }
+            if (result.sanitized) {
+              for (const c of chunkString(result.sanitized)) {
+                yield {
+                  choices: [{ delta: { content: c }, index: 0 }],
+                };
               }
             }
-          } catch {
-            return response;
           }
           if (hadLeak && options.throwOnLeak) {
             throw new LeakDetectedError(1, 0);
@@ -171,23 +162,15 @@ export function shieldOpenAI<
       }
 
       let accumulated = "";
-      try {
-        for await (const chunk of response as AsyncIterable<{
-          choices?: Array<{ delta?: { content?: string } }>;
-        }>) {
-          const content = chunk?.choices?.[0]?.delta?.content;
-          if (typeof content === "string") {
-            accumulated += content;
-          }
+      for await (const chunk of response as AsyncIterable<{
+        choices?: Array<{ delta?: { content?: string } }>;
+      }>) {
+        const content = chunk?.choices?.[0]?.delta?.content;
+        if (typeof content === "string") {
+          accumulated += content;
         }
-      } catch {
-        return response;
       }
-      const result = sanitize(
-        accumulated,
-        derivedSystemPrompt,
-        sanitizeOpts
-      );
+      const result = sanitize(accumulated, derivedSystemPrompt, sanitizeOpts);
       if (result.leaked) {
         options.onLeakDetected?.(result);
         if (options.throwOnLeak) {

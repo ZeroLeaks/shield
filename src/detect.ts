@@ -2,6 +2,7 @@ import {
   type DetectNormalizationOptions,
   normalizeForDetection,
 } from "./normalization";
+
 export type { DetectNormalizationOptions } from "./normalization";
 
 export interface DetectResult {
@@ -87,6 +88,7 @@ const SUSPICIOUS_WORDS = new Set([
   "clearance",
   "internal",
 ]);
+
 const INJECTION_PATTERNS: PatternDef[] = [
   {
     category: "instruction_override",

@@ -3,6 +3,8 @@
  * Handles OpenAI/Groq-compatible message content (string | ContentPart[]).
  */
 
+import type { RedactedSanitizeResult, SanitizeResult } from "../sanitize";
+
 type ContentPart = { type: string; text?: string };
 
 /** Extract text from message content (string or array of text/image parts). */
@@ -35,11 +37,6 @@ export function* chunkString(
 
 const STREAM_OVERLAP = 64;
 
-export interface SanitizeChunkResult {
-  sanitized: string;
-  leaked: boolean;
-}
-
 /** Extract text from OpenAI-style stream chunk. */
 export function extractOpenAIChunkText(chunk: {
   choices?: Array<{ delta?: { content?: string } }>;
@@ -49,36 +46,112 @@ export function extractOpenAIChunkText(chunk: {
 }
 
 /**
- * Sanitize a text stream in chunks to limit memory. Buffers `chunkSize` bytes
- * at a time, overlaps with previous chunk for n-gram continuity.
+ * Each result's `sanitized` is the text to emit, and its other fields
+ * describe the scan of the window that text came from.
  */
+export interface ChunkedSanitizer {
+  /** Add text and return the sanitized text that is now safe to emit. */
+  push(text: string): SanitizeResult[];
+  /** Sanitize and return whatever is still held back. */
+  flush(): SanitizeResult | undefined;
+}
+
+/**
+ * Sanitizes text `chunkSize` characters at a time and emits every character
+ * exactly once. Each window is scanned together with the last
+ * `STREAM_OVERLAP` characters emitted before it, redacted or not, and the
+ * last `STREAM_OVERLAP` characters after its final redaction are held back
+ * and scanned again with the next window. A leak that straddles a boundary
+ * is caught from either side. Pass `Infinity` to sanitize everything on
+ * `flush()`.
+ */
+export function createChunkedSanitizer(
+  systemPrompt: string,
+  sanitizeFn: (output: string, prompt: string) => RedactedSanitizeResult,
+  chunkSize: number
+): ChunkedSanitizer {
+  const size = Math.max(1, chunkSize);
+  let context = "";
+  let held = "";
+  let buffer = "";
+  let endsRedacted = false;
+
+  const scan = (pending: string, final: boolean): SanitizeResult => {
+    const window = context + pending;
+    const start = context.length;
+    const { leaked, confidence, fragments, redactions, redactionText } =
+      sanitizeFn(window, systemPrompt);
+    const lastEnd = Math.max(0, ...redactions.map(([, end]) => end));
+    const cut = final
+      ? window.length
+      : Math.max(start, lastEnd, window.length - STREAM_OVERLAP);
+
+    let sanitized = "";
+    let pos = start;
+    for (const [from, to] of redactions) {
+      if (to <= start) {
+        continue;
+      }
+      sanitized += window.slice(pos, from);
+      // A redaction that began in the context continues the one already
+      // emitted, if the emitted text ended in one.
+      if (from >= start || !endsRedacted) {
+        sanitized += redactionText;
+      }
+      pos = to;
+    }
+    sanitized += window.slice(pos, cut);
+
+    if (cut > start) {
+      endsRedacted = lastEnd === cut;
+    }
+    context = window.slice(Math.max(0, cut - STREAM_OVERLAP), cut);
+    held = window.slice(cut);
+    return { leaked, confidence, fragments, sanitized };
+  };
+
+  return {
+    push(text) {
+      buffer += text;
+      const results: SanitizeResult[] = [];
+      while (buffer.length >= size) {
+        const chunk = buffer.slice(0, size);
+        buffer = buffer.slice(size);
+        results.push(scan(held + chunk, false));
+      }
+      return results;
+    },
+    flush() {
+      if (!buffer) {
+        // The held tail was already scanned with the window it came from,
+        // and nothing in it was redacted.
+        const rest = held;
+        held = "";
+        return rest
+          ? { leaked: false, confidence: 0, fragments: [], sanitized: rest }
+          : undefined;
+      }
+      const pending = held + buffer;
+      buffer = "";
+      return scan(pending, true);
+    },
+  };
+}
+
+/** Sanitize a text stream in chunks to limit memory. */
 export async function* sanitizeTextStreamChunked(
   textStream: AsyncIterable<string>,
   systemPrompt: string,
-  sanitizeFn: (
-    output: string,
-    prompt: string
-  ) => SanitizeChunkResult,
+  sanitizeFn: (output: string, prompt: string) => RedactedSanitizeResult,
   chunkSize = 8192
-): AsyncGenerator<SanitizeChunkResult, void, unknown> {
-  let buffer = "";
-  let prevOverlap = "";
-
+): AsyncGenerator<SanitizeResult, void, unknown> {
+  const sanitizer = createChunkedSanitizer(systemPrompt, sanitizeFn, chunkSize);
   for await (const chunk of textStream) {
-    buffer += chunk;
-
-    while (buffer.length >= chunkSize) {
-      const toProcess = prevOverlap + buffer.slice(0, chunkSize);
-      buffer = buffer.slice(chunkSize);
-      prevOverlap = toProcess.slice(-STREAM_OVERLAP);
-
-      yield sanitizeFn(toProcess, systemPrompt);
-    }
+    yield* sanitizer.push(chunk);
   }
-
-  if (buffer.length > 0) {
-    const toProcess = prevOverlap + buffer;
-    yield sanitizeFn(toProcess, systemPrompt);
+  const last = sanitizer.flush();
+  if (last) {
+    yield last;
   }
 }
 
@@ -94,7 +167,10 @@ export async function* openAIStreamToText(
 
 /** Adapt Anthropic stream to text stream for chunked sanitization. */
 export async function* anthropicStreamToText(
-  stream: AsyncIterable<{ type?: string; delta?: { type?: string; text?: string } }>
+  stream: AsyncIterable<{
+    type?: string;
+    delta?: { type?: string; text?: string };
+  }>
 ): AsyncGenerator<string, void, unknown> {
   for await (const event of stream) {
     if (event?.type === "content_block_delta" && event.delta?.text) {

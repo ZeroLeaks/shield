@@ -104,26 +104,30 @@ const response = await client.chat.completions.create({
 });
 ```
 
-### Vercel AI SDK (recommended: automatic sanitization)
+### Vercel AI SDK
 
-Use `shieldLanguageModelMiddleware` with `wrapLanguageModel` for automatic hardening, injection detection, and output sanitization. No need to call `sanitizeOutput` manually:
+`shieldLanguageModelMiddleware` plugs into `wrapLanguageModel` and works with AI SDK 4, 5, and 6:
 
 ```typescript
-import { wrapLanguageModel, generateText } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
+import { generateText, wrapLanguageModel } from "ai";
+import { openai } from "@ai-sdk/openai";
 import { shieldLanguageModelMiddleware } from "@zeroleaks/shield/ai-sdk";
 
-const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const model = wrapLanguageModel({
   model: openai("gpt-5.3-codex"),
-  middleware: shieldLanguageModelMiddleware({ systemPrompt: "You are helpful." }),
+  middleware: shieldLanguageModelMiddleware(),
 });
 
-const result = await generateText({ model, prompt: "Hi" });
-// result.text is automatically sanitized
+const result = await generateText({
+  model,
+  system: "You are a helpful assistant.",
+  prompt: userInput,
+});
 ```
 
-### Vercel AI SDK (manual wrapParams + sanitizeOutput)
+It hardens system messages, blocks injected user messages, and sanitizes the output of `generateText` and `streamText`. In a stream, everything that isn't text (tool calls, usage, the finish event) passes through untouched, except `raw` parts from `includeRawChunks`, which are dropped because they carry the unsanitized text. For the same reason, `generateText` drops `response.body` when it redacts something. With `throwOnLeak`, `generateText` throws `LeakDetectedError`, while `streamText` ends the stream with an `error` part carrying it: `onError` gets the error, and the stream finishes with `finishReason: "error"` and no token usage.
+
+To run each step yourself, use `shieldMiddleware`:
 
 ```typescript
 import { generateText } from "ai";
@@ -142,28 +146,29 @@ const result = await generateText({
 const safeOutput = shield.sanitizeOutput(result.text);
 ```
 
-For `streamText` with the manual approach, accumulate the full output and call `shield.sanitizeOutput(accumulated)` before using it.
+`sanitizeOutput()` only sees the text you give it, so with `streamText` you have to collect the full output first.
 
 ## API Reference
 
 ### `harden(prompt, options?)`
 
-Injects security rules into a system prompt. Returns the hardened string.
+Adds security rules to a system prompt as a bullet list. Returns the hardened string.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `skipPersonaAnchor` | `boolean` | `false` | Skip persona-binding rule |
 | `skipAntiExtraction` | `boolean` | `false` | Skip anti-extraction rules |
 | `customRules` | `string[]` | `[]` | Additional rules to inject |
-| `position` | `"prepend" \| "append"` | `"append"` | Where to add rules |
+| `position` | `"prepend" \| "append"` | `"append"` | `"prepend"` puts the rules at the top. Otherwise they go right after the paragraph that sets the model's identity ("You are...", "Your role is..."), or near the top if there is none. |
 
 ### `detect(input, options?)`
 
-Scans user input for prompt injection patterns. Returns `{ detected, risk, matches }`.
+Scans text for prompt injection patterns in 11 categories. Returns `{ detected, risk, matches }`. Input is normalized first (NFKC, homoglyphs, invisible characters, spaced-out letters, leetspeak, common typos), and only the first 8,192 characters are matched. `detectAsync(input, options?)` is the same but runs `secondaryDetector`.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `threshold` | `"low" \| "medium" \| "high" \| "critical"` | `"medium"` | Minimum risk to flag |
+| `normalization` | `DetectNormalizationOptions \| false` | all steps on | Turn individual normalization steps off, or pass `false` to disable. Custom patterns run against normalized, lowercased text with digits decoded as leetspeak. |
 | `customPatterns` | `Array<{category, regex, risk}>` | `[]` | Custom detection patterns |
 | `excludeCategories` | `string[]` | `[]` | Skip detection for these categories. Use `["social_engineering"]` to allow phrases like "for research purposes only" in legitimate contexts. |
 | `allowPhrases` | `string[]` | `[]` | Whitelist phrases (case-insensitive). If input contains one, detection is suppressed. Use sparingly for known-benign strings. |
@@ -172,11 +177,9 @@ Scans user input for prompt injection patterns. Returns `{ detected, risk, match
 
 ### `sanitize(output, systemPrompt, options?)`
 
-Checks model output for leaked system prompt fragments using n-gram matching.
+Checks model output for leaked system prompt fragments using n-gram matching. Returns `{ leaked, confidence, fragments, sanitized }`.
 
-### `sanitizeObject(obj, systemPrompt, options?)`
-
-Recursively sanitizes string values in objects (e.g. for tool call arguments). Returns `{ result, hadLeak }`.
+`sanitizeObject(obj, systemPrompt, options?)` does the same for every string in a nested object (e.g. tool call arguments) and returns `{ result, hadLeak }`. Both take these options:
 
 | Option | Type | Default | Description |
 |---|---|---|---|
@@ -196,9 +199,13 @@ Recursively sanitizes string values in objects (e.g. for tool call arguments). R
 | `throwOnLeak` | `boolean` | `false` | When `true`, throw `LeakDetectedError` instead of redacting leaked content. |
 | `onDetection` | `"block" \| "warn"` | `"block"` | `"block"` throws on injection; `"warn"` only invokes `onInjectionDetected`. |
 
+**What gets scanned:** The OpenAI, Anthropic, and Groq wrappers wrap only the `create` method and scan only `role: "user"` messages. Tool results and retrieved documents are not scanned; call `detect()` on them yourself.
+
+**Wrapped client type:** The OpenAI, Anthropic, and Groq wrappers return a shallow copy of your client, typed as your client, and some of what that type promises is `undefined` at runtime. The other methods next to `create` are missing, such as `chat.completions.parse()` or `messages.stream()`, and so are methods on the client itself, such as `withOptions()`. `create()` returns a plain Promise, so `withResponse()` and `asResponse()` are missing. A sanitized stream is a plain async iterable without `controller`, `toReadableStream()`, or `tee()`; read it with `for await`.
+
 **Multi-part messages:** OpenAI and Groq support `content` as `string | ContentPart[]` (e.g. text + images). Shield extracts text from all parts for injection detection and hardening.
 
-**Streaming:** Use `streamingSanitize: "chunked"` for long streams to limit memory (~8KB at a time). Use `"passthrough"` to skip sanitization when you accept the risk.
+**Streaming:** In the OpenAI, Anthropic, and Groq wrappers, `"buffer"` reads the whole stream, sanitizes it, then re-emits it as text-only chunks; tool call deltas, finish reasons, and usage are dropped. `"chunked"` does the same 8KB at a time. Each chunk is scanned with the 64 characters sent before it, and its last 64 characters are held back and scanned again with the next one, so a leak across a boundary is caught from either side and no text is repeated. `"passthrough"` returns the original stream with no sanitization. If the provider's stream fails partway through, its error reaches your code. The AI SDK middleware uses the same modes but keeps every non-text stream part.
 
 ## Error Handling
 
@@ -241,6 +248,8 @@ Shield provides heuristic-based, real-time protection. It is designed for speed 
 - Semantic attacks that avoid keyword-based detection
 - Complex multi-turn escalation (use ZeroLeaks scanning for this)
 - Attacks in non-English languages (partial coverage)
+- Injections in tool results or documents that you do not pass to `detect()`
+- An agent misusing tools it is allowed to call. Shield does not know your agent's tools or permissions; [ZeroLeaks agent scans](https://zeroleaks.ai/docs/sdk) test for that.
 
 ## Benchmarks
 
@@ -267,6 +276,8 @@ AI SDK integration tests use the OpenAI provider and require `OPENAI_API_KEY`.
 ```bash
 bun run test:integration
 ```
+
+Tests skip gracefully when the required API key is not configured.
 
 ## License
 
