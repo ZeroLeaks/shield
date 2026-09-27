@@ -7,8 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.2.1] - 2026-09-27
 
-1.2.0 was staged on npm but never published; 1.2.1 ships everything listed below.
-
 ### Added
 
 - **`DetectOptions.normalization`:** Configurable normalization before detection (homoglyph folding, invisible character stripping, whitespace collapsing, joining spaced-out letters, lowercasing, leetspeak decoding, typo and phonetic repair). On by default; pass `false` to disable.
