@@ -1,6 +1,6 @@
 {
   "name": "@zeroleaks/shield",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Runtime prompt security SDK — harden, detect injections, and sanitize LLM output",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
