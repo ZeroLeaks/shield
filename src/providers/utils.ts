@@ -3,17 +3,24 @@
  * Handles OpenAI/Groq-compatible message content (string | ContentPart[]).
  */
 
+import type { OutputFinding } from "../output";
 import type { RedactedSanitizeResult, SanitizeResult } from "../sanitize";
 
-type ContentPart = { type: string; text?: string };
+interface ContentPart {
+  type: string;
+  text?: string;
+}
 
 /** Extract text from message content (string or array of text/image parts). */
 export function extractOpenAIContentText(
   content: string | ContentPart[] | null | undefined
 ): string {
-  if (content == null) return "";
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
+  if (typeof content === "string") {
+    return content;
+  }
+  if (!Array.isArray(content)) {
+    return "";
+  }
   return content
     .filter(
       (p): p is ContentPart & { text: string } =>
@@ -35,60 +42,132 @@ export function* chunkString(
   }
 }
 
-const STREAM_OVERLAP = 64;
+/** Default number of characters each chunk is scanned with on either side. */
+export const STREAM_OVERLAP = 64;
 
-/** Extract text from OpenAI-style stream chunk. */
-export function extractOpenAIChunkText(chunk: {
-  choices?: Array<{ delta?: { content?: string } }>;
-}): string {
-  const content = chunk?.choices?.[0]?.delta?.content;
-  return typeof content === "string" ? content : "";
+/**
+ * Longest redaction held back at the end of a chunk to be scanned again with
+ * the next one. Covers a private key block, the longest finding there is.
+ */
+const MAX_HELD_REDACTION = 32 * 1024;
+
+export function isAsyncIterable<T>(value: unknown): value is AsyncIterable<T> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as AsyncIterable<T>)[Symbol.asyncIterator] === "function"
+  );
+}
+
+/** The scan of one window of streamed text. */
+export interface WindowScan extends RedactedSanitizeResult {
+  /** Replacement text for each redaction, by index. `redactionText` when missing. */
+  replacements?: string[];
+  /** Output findings, with offsets into the window. */
+  findings?: OutputFinding[];
 }
 
 /**
- * Each result's `sanitized` is the text to emit, and its other fields
- * describe the scan of the window that text came from.
+ * `sanitized` is the text to emit. The other fields describe the scan of the
+ * window that text came from, except `findings`, which only holds the output
+ * findings that start in the emitted text, with offsets into the whole text
+ * pushed so far.
  */
+export interface ChunkResult extends SanitizeResult {
+  findings: OutputFinding[];
+}
+
 export interface ChunkedSanitizer {
   /** Add text and return the sanitized text that is now safe to emit. */
-  push(text: string): SanitizeResult[];
+  push(text: string): ChunkResult[];
   /** Sanitize and return whatever is still held back. */
-  flush(): SanitizeResult | undefined;
+  flush(): ChunkResult | undefined;
+}
+
+function shiftFindings(
+  findings: OutputFinding[],
+  offset: number
+): OutputFinding[] {
+  return findings.map((f) => ({
+    ...f,
+    start: f.start + offset,
+    end: f.end + offset,
+  }));
 }
 
 /**
  * Sanitizes text `chunkSize` characters at a time and emits every character
- * exactly once. Each window is scanned together with the last
- * `STREAM_OVERLAP` characters emitted before it, redacted or not, and the
- * last `STREAM_OVERLAP` characters after its final redaction are held back
- * and scanned again with the next window. A leak that straddles a boundary
- * is caught from either side. Pass `Infinity` to sanitize everything on
- * `flush()`.
+ * exactly once. Each window is scanned together with the last `overlap`
+ * characters emitted before it, redacted or not, and the last `overlap`
+ * characters after its final redaction are held back and scanned again with
+ * the next window. A leak that straddles a boundary is caught from either
+ * side. A redaction that runs to the end of a window may go on past it (a
+ * private key cut in half), so it is held back too, up to 32KB, and scanned
+ * again whole. Pass `Infinity` to sanitize everything on `flush()`.
  */
 export function createChunkedSanitizer(
   systemPrompt: string,
-  sanitizeFn: (output: string, prompt: string) => RedactedSanitizeResult,
-  chunkSize: number
+  sanitizeFn: (output: string, prompt: string) => WindowScan,
+  chunkSize: number,
+  overlap = STREAM_OVERLAP
 ): ChunkedSanitizer {
   const size = Math.max(1, chunkSize);
+  const keep = Math.max(1, overlap);
   let context = "";
   let held = "";
   let buffer = "";
   let endsRedacted = false;
+  /** Offset of `context` in the text pushed so far. */
+  let offset = 0;
+  /** Whether `held` was scanned and nothing in it needs redacting. */
+  let heldClean = true;
+  /** Findings that start in `held`, reported if it is emitted unscanned. */
+  let heldFindings: OutputFinding[] = [];
 
-  const scan = (pending: string, final: boolean): SanitizeResult => {
+  const cutPoint = (
+    window: string,
+    start: number,
+    redactions: [number, number][]
+  ): { cut: number; holding: boolean } => {
+    // Redactions are sorted and disjoint, so the last one ends last.
+    const count = redactions.length;
+    const last = count > 0 ? redactions[count - 1] : undefined;
+    const holding =
+      last !== undefined &&
+      last[1] >= window.length &&
+      last[0] >= start &&
+      window.length - last[0] <= MAX_HELD_REDACTION;
+    if (!holding) {
+      return {
+        cut: Math.max(start, last ? last[1] : 0, window.length - keep),
+        holding: false,
+      };
+    }
+    const before = count > 1 ? redactions[count - 2][1] : 0;
+    return {
+      cut: Math.max(start, before, Math.min(last[0], window.length - keep)),
+      holding: true,
+    };
+  };
+
+  const scan = (pending: string, final: boolean): ChunkResult => {
     const window = context + pending;
     const start = context.length;
+    const scanned = sanitizeFn(window, systemPrompt);
     const { leaked, confidence, fragments, redactions, redactionText } =
-      sanitizeFn(window, systemPrompt);
-    const lastEnd = Math.max(0, ...redactions.map(([, end]) => end));
-    const cut = final
-      ? window.length
-      : Math.max(start, lastEnd, window.length - STREAM_OVERLAP);
+      scanned;
+    const { cut, holding } = final
+      ? { cut: window.length, holding: false }
+      : cutPoint(window, start, redactions);
 
     let sanitized = "";
     let pos = start;
-    for (const [from, to] of redactions) {
+    let emittedEnd = 0;
+    for (const [i, [from, to]] of redactions.entries()) {
+      if (from >= cut) {
+        break;
+      }
+      emittedEnd = to;
       if (to <= start) {
         continue;
       }
@@ -96,24 +175,41 @@ export function createChunkedSanitizer(
       // A redaction that began in the context continues the one already
       // emitted, if the emitted text ended in one.
       if (from >= start || !endsRedacted) {
-        sanitized += redactionText;
+        sanitized += scanned.replacements?.[i] ?? redactionText;
       }
       pos = to;
     }
     sanitized += window.slice(pos, cut);
 
+    const findings = scanned.findings ?? [];
+    const emitted = findings.filter((f) => f.start >= start && f.start < cut);
+    const windowOffset = offset;
+    heldFindings = shiftFindings(
+      findings.filter((f) => f.start >= cut),
+      windowOffset
+    );
+    heldClean = !holding;
+
     if (cut > start) {
-      endsRedacted = lastEnd === cut;
+      endsRedacted = emittedEnd === cut;
     }
-    context = window.slice(Math.max(0, cut - STREAM_OVERLAP), cut);
+    const contextStart = Math.max(0, cut - keep);
+    context = window.slice(contextStart, cut);
+    offset += contextStart;
     held = window.slice(cut);
-    return { leaked, confidence, fragments, sanitized };
+    return {
+      leaked,
+      confidence,
+      fragments,
+      sanitized,
+      findings: shiftFindings(emitted, windowOffset),
+    };
   };
 
   return {
     push(text) {
       buffer += text;
-      const results: SanitizeResult[] = [];
+      const results: ChunkResult[] = [];
       while (buffer.length >= size) {
         const chunk = buffer.slice(0, size);
         buffer = buffer.slice(size);
@@ -122,59 +218,26 @@ export function createChunkedSanitizer(
       return results;
     },
     flush() {
-      if (!buffer) {
+      if (!buffer && heldClean) {
         // The held tail was already scanned with the window it came from,
         // and nothing in it was redacted.
         const rest = held;
+        const findings = heldFindings;
         held = "";
+        heldFindings = [];
         return rest
-          ? { leaked: false, confidence: 0, fragments: [], sanitized: rest }
+          ? {
+              leaked: false,
+              confidence: 0,
+              fragments: [],
+              sanitized: rest,
+              findings,
+            }
           : undefined;
       }
       const pending = held + buffer;
       buffer = "";
-      return scan(pending, true);
+      return pending ? scan(pending, true) : undefined;
     },
   };
-}
-
-/** Sanitize a text stream in chunks to limit memory. */
-export async function* sanitizeTextStreamChunked(
-  textStream: AsyncIterable<string>,
-  systemPrompt: string,
-  sanitizeFn: (output: string, prompt: string) => RedactedSanitizeResult,
-  chunkSize = 8192
-): AsyncGenerator<SanitizeResult, void, unknown> {
-  const sanitizer = createChunkedSanitizer(systemPrompt, sanitizeFn, chunkSize);
-  for await (const chunk of textStream) {
-    yield* sanitizer.push(chunk);
-  }
-  const last = sanitizer.flush();
-  if (last) {
-    yield last;
-  }
-}
-
-/** Adapt OpenAI/Groq stream to text stream for chunked sanitization. */
-export async function* openAIStreamToText(
-  stream: AsyncIterable<{ choices?: Array<{ delta?: { content?: string } }> }>
-): AsyncGenerator<string, void, unknown> {
-  for await (const chunk of stream) {
-    const t = extractOpenAIChunkText(chunk);
-    if (t) yield t;
-  }
-}
-
-/** Adapt Anthropic stream to text stream for chunked sanitization. */
-export async function* anthropicStreamToText(
-  stream: AsyncIterable<{
-    type?: string;
-    delta?: { type?: string; text?: string };
-  }>
-): AsyncGenerator<string, void, unknown> {
-  for await (const event of stream) {
-    if (event?.type === "content_block_delta" && event.delta?.text) {
-      yield event.delta.text;
-    }
-  }
 }

@@ -1,7 +1,7 @@
 {
   "name": "@zeroleaks/shield",
-  "version": "1.2.1",
-  "description": "Runtime prompt security SDK — harden, detect injections, and sanitize LLM output",
+  "version": "2.0.0",
+  "description": "Runtime security for LLM apps and agents: prompt injection detection for user input and tool results, and leak, credential, PII, and exfiltration checks on model output",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -30,10 +30,51 @@
       "types": "./dist/providers/groq.d.ts",
       "import": "./dist/providers/groq.mjs",
       "require": "./dist/providers/groq.js"
+    },
+    "./google": {
+      "types": "./dist/providers/google.d.ts",
+      "import": "./dist/providers/google.mjs",
+      "require": "./dist/providers/google.js"
+    },
+    "./mistral": {
+      "types": "./dist/providers/mistral.d.ts",
+      "import": "./dist/providers/mistral.mjs",
+      "require": "./dist/providers/mistral.js"
+    },
+    "./langchain": {
+      "types": "./dist/providers/langchain.d.ts",
+      "import": "./dist/providers/langchain.mjs",
+      "require": "./dist/providers/langchain.js"
+    },
+    "./mcp": {
+      "types": "./dist/providers/mcp.d.ts",
+      "import": "./dist/providers/mcp.mjs",
+      "require": "./dist/providers/mcp.js"
+    },
+    "./openai-agents": {
+      "types": "./dist/providers/openai-agents.d.ts",
+      "import": "./dist/providers/openai-agents.mjs",
+      "require": "./dist/providers/openai-agents.js"
+    },
+    "./model": {
+      "types": "./dist/model.d.ts",
+      "import": "./dist/model.mjs",
+      "require": "./dist/model.js"
+    },
+    "./local": {
+      "types": "./dist/local.d.ts",
+      "import": "./dist/local.mjs",
+      "require": "./dist/local.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.mjs",
+      "require": "./dist/server.js"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "MIGRATION.md"
   ],
   "scripts": {
     "build": "tsup",
@@ -43,7 +84,8 @@
     "typecheck": "tsc --noEmit -p .",
     "prepublishOnly": "bun run typecheck && bun run test && bun run build",
     "test:integration": "bunx vitest run --config vitest.integration.config.ts",
-    "benchmark": "bun run scripts/benchmark.ts"
+    "benchmark": "bun run scripts/benchmark.ts",
+    "serve": "bun run src/server/cli.ts"
   },
   "repository": {
     "type": "git",
@@ -59,14 +101,35 @@
     "prompt-injection",
     "ai-safety",
     "openai",
-    "anthropic"
+    "anthropic",
+    "gemini",
+    "mistral",
+    "langchain",
+    "jailbreak",
+    "ai-agents",
+    "agent-security",
+    "mcp",
+    "openai-agents",
+    "tool-poisoning",
+    "guardrails",
+    "dlp",
+    "secrets-detection",
+    "pii",
+    "canary",
+    "ai-sdk"
   ],
   "license": "MIT",
   "peerDependencies": {
     "openai": ">=4.0.0",
     "@anthropic-ai/sdk": ">=0.20.0",
     "ai": ">=3.0.0",
-    "groq-sdk": ">=0.3.0"
+    "groq-sdk": ">=0.3.0",
+    "@google/genai": ">=1.0.0",
+    "@mistralai/mistralai": ">=1.0.0",
+    "@langchain/core": ">=0.3.0",
+    "@modelcontextprotocol/sdk": ">=1.0.0",
+    "@openai/agents": ">=0.3.8",
+    "@huggingface/transformers": "^3.8.1"
   },
   "peerDependenciesMeta": {
     "openai": {
@@ -80,11 +143,35 @@
     },
     "groq-sdk": {
       "optional": true
+    },
+    "@google/genai": {
+      "optional": true
+    },
+    "@mistralai/mistralai": {
+      "optional": true
+    },
+    "@langchain/core": {
+      "optional": true
+    },
+    "@modelcontextprotocol/sdk": {
+      "optional": true
+    },
+    "@openai/agents": {
+      "optional": true
+    },
+    "@huggingface/transformers": {
+      "optional": true
     }
   },
   "devDependencies": {
     "@ai-sdk/openai": "^3.0.33",
     "@anthropic-ai/sdk": "^0.78.0",
+    "@google/genai": "^2.24.0",
+    "@huggingface/transformers": "^3.8.1",
+    "@langchain/core": "^1.2.12",
+    "@mistralai/mistralai": "^2.7.0",
+    "@modelcontextprotocol/sdk": "^1.30.1",
+    "@openai/agents": "^0.18.0",
     "@types/node": "^26.1.1",
     "ai": "^6.0.292",
     "ai-v4": "npm:ai@^4.3.19",
@@ -93,7 +180,8 @@
     "openai": "^6.25.0",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.18"
+    "vitest": "^4.0.18",
+    "zod": "^4.6.5"
   },
   "engines": {
     "node": ">=18.0.0"
