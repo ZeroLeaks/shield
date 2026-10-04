@@ -7,12 +7,20 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { shieldRegistryEntry } from "../registry/entry";
 
+interface PackMetadata {
+  filename: string;
+  name: string;
+  version: string;
+  files: { path: string }[];
+}
+
 const execute = promisify(execFile);
 const directory = resolve(import.meta.dirname, "..");
 const temporary = await mkdtemp(join(tmpdir(), "shield-package-"));
 const manifest = JSON.parse(
   await readFile(join(directory, "package.json"), "utf8")
 ) as {
+  name: string;
   version: string;
   exports: Record<string, Record<"types" | "import" | "require", string>>;
 };
@@ -24,6 +32,8 @@ async function run(
 ): Promise<string> {
   const { stdout } = await execute(command, args, {
     cwd,
+    // npm publish --dry-run must still pack and install real test artifacts.
+    env: { ...process.env, npm_config_dry_run: "false" },
     timeout: 120_000,
     maxBuffer: 8 * 1024 * 1024,
   });
@@ -138,19 +148,22 @@ process.on('exit', () => assert.equal(calls, 2));
 `;
 
 try {
-  const packed = JSON.parse(
+  const packOutput = JSON.parse(
     await run(
       "npm",
       ["pack", "--json", "--pack-destination", temporary],
       directory
     )
-  ) as {
-    filename: string;
-    files: { path: string }[];
-  }[];
+  ) as PackMetadata[] | Record<string, PackMetadata>;
+  // npm 12 keys pack metadata by package name; earlier versions return an array.
+  const packed = Array.isArray(packOutput)
+    ? packOutput
+    : Object.values(packOutput);
   assert.equal(packed.length, 1);
   const artifact = packed[0];
   assert.ok(artifact);
+  assert.equal(artifact.name, manifest.name);
+  assert.equal(artifact.version, manifest.version);
   const files = new Set(artifact.files.map((file) => file.path));
   for (const [name, targets] of Object.entries(manifest.exports)) {
     for (const target of Object.values(targets)) {

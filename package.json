@@ -1,6 +1,6 @@
 {
   "name": "@zeroleaks/shield",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Runtime security for LLM apps and agents: prompt injection detection for user input and tool results, and leak, credential, PII, and exfiltration checks on model output",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

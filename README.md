@@ -86,7 +86,7 @@ Pass `detect: shield.options()` to the other wrappers in the same way. Omitting 
 
 ## AI SDK inspection tool
 
-Shield 2.1.0 adds an inspection tool for AI SDK 5, 6, and 7:
+Shield 2.1.1 adds an inspection tool for AI SDK 5, 6, and 7:
 
 ```typescript
 import { shieldCheck } from "@zeroleaks/shield/ai-sdk/tools";

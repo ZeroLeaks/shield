@@ -10,7 +10,7 @@ The package also provides `shieldLanguageModelMiddleware` to check user messages
 - Canonical repository: https://github.com/ZeroLeaks/shield
 - AI SDK integration guide: https://zeroleaks.ai/docs/shield-sdk/providers/ai-sdk-tools
 - Website: https://zeroleaks.ai/shield
-- Version prepared and tested: `@zeroleaks/shield@2.1.0`
+- Version prepared and tested: `@zeroleaks/shield@2.1.1`
 - Current SDK tested: `ai@7.0.127`
 - Additional supported SDKs tested: `ai@5.0.267`, `ai@6.0.292`
 

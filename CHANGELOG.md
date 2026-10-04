@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.1.1] - 2026-10-04
+
+- Fixed release verification for npm 12's package metadata format while retaining compatibility with earlier npm versions. Packed package names and versions are checked against the manifest, and publish dry runs still create and install real test artifacts.
+- First npm release of the AI SDK inspection tool. The 2.1.0 publication stopped during verification before uploading a package; this version includes all changes below.
+
 ## [2.1.0] - 2026-10-04
 
 - Added `shieldCheck` at `@zeroleaks/shield/ai-sdk/tools` for AI SDK 5, 6, and 7. It uses local detection by default, supports explicit hosted detection and async local detectors, and returns detection metadata without repeating input text or matching patterns.
