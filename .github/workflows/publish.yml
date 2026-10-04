@@ -69,6 +69,17 @@ jobs:
           if (response.ok) console.log(`${name}@${version} is already published; skipping publication.`);
           JS
 
+      - name: Verify repository provenance identity
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          const { repository } = JSON.parse(readFileSync('package.json', 'utf8'));
+          const declared = repository.url.replace(/^git\+/, '').replace(/\.git\/?$/, '').replace(/\/$/, '');
+          const expected = `https://github.com/${process.env.GITHUB_REPOSITORY}`;
+          assert.equal(declared, expected, 'package.json repository.url must match GitHub provenance, including capitalization');
+          JS
+
       - name: Test
         run: bun run test
 
