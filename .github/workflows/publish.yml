@@ -38,6 +38,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
+          package-manager-cache: false
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -87,10 +88,10 @@ jobs:
 
       - name: Validate package
         if: github.event_name == 'workflow_dispatch' && inputs.dry_run
-        run: npm publish --dry-run --access public
+        run: npm publish --dry-run --access public --loglevel verbose
 
       - name: Publish package
         if: steps.registry.outputs.published != 'true' && (github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run))
         env:
           NPM_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.npm_tag || 'latest' }}
-        run: npm publish --access public --provenance --tag "$NPM_TAG"
+        run: npm publish --access public --provenance --tag "$NPM_TAG" --loglevel verbose

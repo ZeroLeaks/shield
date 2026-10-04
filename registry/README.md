@@ -10,10 +10,10 @@ The 2.1.1 release passed code and package checks but npm rejected authentication
 
 An npm package administrator can authorize the existing workflow in the package's [trusted publisher settings](https://www.npmjs.com/package/@zeroleaks/shield/access), following [npm's instructions](https://docs.npmjs.com/trusted-publishers/). Use the exact GitHub owner `ZeroLeaks`, repository `shield`, workflow filename `publish.yml`, and environment `npm`. Permit direct `npm publish`; staged-only permission will not publish this release. The workflow already uses GitHub-hosted runners, Node 24, current npm, and `id-token: write`.
 
-After authorization, retry the existing release run, then verify the registry version:
+After authorization, retry the current workflow, then verify the registry version. Verbose npm logs report the OIDC exchange reason if authentication fails:
 
 ```bash
-gh run rerun 37224605299 --repo ZeroLeaks/shield --failed
+gh workflow run publish.yml --repo ZeroLeaks/shield --ref master -f dry_run=false -f npm_tag=latest
 npm view @zeroleaks/shield@2.1.1 version
 ```
 
