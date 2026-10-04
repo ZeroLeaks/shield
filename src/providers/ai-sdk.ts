@@ -24,13 +24,19 @@ interface Message {
   role: string;
   content: string | MessagePart[];
 }
-/** AI SDK 6 also accepts system messages, alone or in an array, as `system`. */
+/**
+ * AI SDK 6 and later also accept system messages, alone or in an array, as
+ * `system`, and AI SDK 7 as `instructions`.
+ */
 interface SystemMessage {
   role: "system";
   content: string;
 }
+type SystemParam = string | SystemMessage | Array<SystemMessage | MessagePart>;
 interface AISdkParams {
-  system?: string | SystemMessage | Array<SystemMessage | MessagePart>;
+  system?: SystemParam;
+  /** AI SDK 7's name for `system`, which it deprecates. */
+  instructions?: SystemParam;
   /** AI SDK 5 and later also accept an array of messages here. */
   prompt?: string | Array<MessagePart | Message>;
   messages?: Message[];
@@ -76,9 +82,9 @@ function hardenSystemMessage(
  * parts becomes a single hardened text part.
  */
 function hardenSystem(
-  system: NonNullable<AISdkParams["system"]>,
+  system: SystemParam,
   options: HardenOptions
-): AISdkParams["system"] {
+): SystemParam {
   if (typeof system === "string") {
     return harden(system, options);
   }
@@ -93,6 +99,23 @@ function hardenSystem(
   }
   const text = extractMessageText(parts);
   return text ? [{ type: "text", text: harden(text, options) }] : system;
+}
+
+/** Hardens `system` and AI SDK 7's `instructions`, whichever are set. */
+function hardenParams<P extends AISdkParams>(
+  params: P,
+  options: HardenOptions | false
+): P {
+  if (options === false) {
+    return { ...params };
+  }
+  return {
+    ...params,
+    ...(params.system && { system: hardenSystem(params.system, options) }),
+    ...(params.instructions && {
+      instructions: hardenSystem(params.instructions, options),
+    }),
+  };
 }
 
 /** Every message, whether in `messages` or in `prompt`. */
@@ -210,21 +233,12 @@ export function shieldMiddleware(options: ShieldAISdkOptions = {}) {
         );
       }
       checkParams(params, shield.input);
-
-      if (shield.harden === false || !params.system) {
-        return { ...params };
-      }
-      return {
-        ...params,
-        system: hardenSystem(params.system, shield.harden),
-      };
+      return hardenParams(params, shield.harden);
     },
 
     async wrapParamsAsync<P extends AISdkParams>(params: P): Promise<P> {
       await checkParamsAsync(params, shield.input);
-      return shield.harden === false || !params.system
-        ? { ...params }
-        : { ...params, system: hardenSystem(params.system, shield.harden) };
+      return hardenParams(params, shield.harden);
     },
 
     /** Redacts prompt leaks and output findings from `text`. */
@@ -291,7 +305,11 @@ interface LanguageModelStreamResult {
   stream: ReadableStream<LanguageModelStreamPart>;
 }
 
-/** Assignable to `LanguageModelMiddleware` from AI SDK 4, 5, and 6. */
+/**
+ * Assignable to `LanguageModelMiddleware` from AI SDK 4, 5, 6, and 7. AI SDK
+ * 7 accepts middleware of any specification version, and its `v4` call
+ * options, results, and stream parts have the shape this middleware reads.
+ */
 export interface ShieldLanguageModelMiddleware {
   readonly specificationVersion: "v3";
   transformParams: <P extends LanguageModelCallOptions>(options: {
@@ -649,7 +667,7 @@ function guardStreamParts(
  * AI SDK language model middleware. Pass it to `wrapLanguageModel` for
  * automatic hardening, injection detection on user input and tool results,
  * and output guarding in `generateText` and `streamText`, with no manual
- * `sanitizeOutput` call. Works with AI SDK 4, 5, and 6.
+ * `sanitizeOutput` call. Works with AI SDK 4, 5, 6, and 7.
  *
  * @example
  * ```ts
