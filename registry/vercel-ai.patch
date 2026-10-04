@@ -1,5 +1,5 @@
 diff --git a/content/tools-registry/registry.ts b/content/tools-registry/registry.ts
-index 7ba3c15..5c80363 100644
+index 7ba3c15..52c36cd 100644
 --- a/content/tools-registry/registry.ts
 +++ b/content/tools-registry/registry.ts
 @@ -689,4 +689,40 @@ console.log(text);`,
@@ -24,7 +24,7 @@ index 7ba3c15..5c80363 100644
 +import { shieldCheck } from '@zeroleaks/shield/ai-sdk/tools';
 +
 +const model = wrapLanguageModel({
-+  model: gateway('openai/gpt-5-mini'),
++  model: gateway('openai/gpt-6.1-sol'),
 +  middleware: shieldLanguageModelMiddleware(),
 +});
 +
