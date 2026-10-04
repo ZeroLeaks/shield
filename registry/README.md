@@ -6,18 +6,18 @@ The public integration guide is `https://zeroleaks.ai/docs/shield-sdk/providers/
 
 Before submitting, confirm that npm serves `@zeroleaks/shield@2.1.1` and the integration guide is live. The source repository, README, public docs, and published package must describe the same exports and supported SDK versions.
 
-The 2.1.1 release passed code and package checks but npm rejected authentication (`ENEEDAUTH`). It is not published yet. No npm token is configured in the repository or its `npm` environment. The app documentation PR also requires a review before production deployment: https://github.com/x1xhlol/zeroleaks-v2/pull/229.
+Publishing uses the `NPM_TOKEN` Actions secret in the Shield repository's `npm` GitHub environment. The existing workflow configures npm authentication from that secret before publishing. Replace it with `gh secret set NPM_TOKEN --repo ZeroLeaks/shield --env npm`; paste the credential into the hidden prompt, and keep it out of source files.
 
-An npm package administrator can authorize the existing workflow in the package's [trusted publisher settings](https://www.npmjs.com/package/@zeroleaks/shield/access), following [npm's instructions](https://docs.npmjs.com/trusted-publishers/). Use the exact GitHub owner `ZeroLeaks`, repository `shield`, workflow filename `publish.yml`, and environment `npm`. Permit direct `npm publish`; staged-only permission will not publish this release. The workflow already uses GitHub-hosted runners, Node 24, current npm, and `id-token: write`.
+The workflow also supports [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/) as an alternative. An npm package administrator can configure it in the package's [trusted publisher settings](https://www.npmjs.com/package/@zeroleaks/shield/access). Use the exact GitHub owner `ZeroLeaks`, repository `shield`, workflow filename `publish.yml`, and environment `npm`. Permit direct `npm publish`; staged-only permission will not publish this release. The workflow already uses GitHub-hosted runners, Node 24, current npm, and `id-token: write`.
 
-After authorization, retry the current workflow, then verify the registry version. Verbose npm logs report the OIDC exchange reason if authentication fails:
+To retry a release, run the current workflow and verify the registry version after it succeeds. Verbose npm logs report the OIDC exchange reason if authentication fails:
 
 ```bash
 gh workflow run publish.yml --repo ZeroLeaks/shield --ref master -f dry_run=false -f npm_tag=latest
 npm view @zeroleaks/shield@2.1.1 version
 ```
 
-Once npm serves the release, update the GitHub release's pending status and remove this publication-blocker note. Confirm the integration guide is deployed before submitting upstream.
+Confirm the integration guide is deployed before submitting upstream. The app documentation PR requires a review before production deployment: https://github.com/x1xhlol/zeroleaks-v2/pull/229.
 
 Run the release checks from the Shield repository:
 

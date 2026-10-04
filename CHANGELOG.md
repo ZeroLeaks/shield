@@ -3,7 +3,7 @@
 ## [2.1.1] - 2026-10-04
 
 - Fixed release verification for npm 12's package metadata format while retaining compatibility with earlier npm versions. Packed package names and versions are checked against the manifest, and publish dry runs still create and install real test artifacts.
-- Includes all AI SDK inspection tool changes below. The 2.1.0 publication stopped during verification before uploading a package. The 2.1.1 checks pass, but npm publication is pending publisher authentication.
+- Includes all AI SDK inspection tool changes below. The 2.1.0 publication stopped during verification before uploading a package.
 
 ## [2.1.0] - 2026-10-04
 
