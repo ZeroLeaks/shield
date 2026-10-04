@@ -33,3 +33,6 @@ jobs:
 
       - name: Validate package contents
         run: npm pack --dry-run
+
+      - name: Verify isolated AI SDK consumers and registry example
+        run: bun run test:package

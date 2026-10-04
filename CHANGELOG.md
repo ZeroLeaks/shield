@@ -1,9 +1,11 @@
 # Changelog
 
-## [Unreleased]
+## [2.1.0] - 2026-10-04
 
-- AI SDK 7 support, tested. `shieldLanguageModelMiddleware` works unchanged with AI SDK 7 (`ai@7`, `v4` language models) in `generateText` and `streamText`, and the test suite now runs it against AI SDK 4, 5, 6, and 7, including streaming, tool results, tool call arguments, `throwOnLeak`, and redaction.
-- The legacy `shieldMiddleware().wrapParams()` and `wrapParamsAsync()` now also harden AI SDK 7's `instructions` option, which replaces the deprecated `system`. Before, a system prompt passed as `instructions` reached the model unhardened.
+- Added `shieldCheck` at `@zeroleaks/shield/ai-sdk/tools` for AI SDK 5, 6, and 7. It uses local detection by default, supports explicit hosted detection and async local detectors, and returns detection metadata without repeating input text or matching patterns.
+- Tool inputs are validated at the schema and execution boundaries. Oversized local input and incomplete hosted coverage reject rather than returning a verdict. Hosted failures and cancellation propagate as errors.
+- Added isolated consumer checks for AI SDK 5–7, both module formats, and root imports without provider SDKs installed. The tool's runtime AI SDK dependency remains confined to its subpath.
+- Confirmed middleware support for AI SDK 7, including `instructions` in the manual helper, generation, streaming, output guards, and raw response handling.
 
 ## [2.0.0] - 2026-10-02
 

@@ -408,7 +408,7 @@ const INJECTION_PATTERNS: PatternDef[] = [
 
 const RISK_ORDER = ["none", "low", "medium", "high", "critical"] as const;
 type Risk = (typeof RISK_ORDER)[number];
-const DEFAULT_MAX_INPUT_LENGTH = 1024 * 1024;
+export const DEFAULT_MAX_INPUT_LENGTH = 1024 * 1024;
 /** Long inputs are scanned in windows this size, overlapping by `WINDOW_OVERLAP`. */
 const WINDOW_SIZE = 8192;
 const WINDOW_OVERLAP = 512;

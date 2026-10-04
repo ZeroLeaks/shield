@@ -1,6 +1,6 @@
 {
   "name": "@zeroleaks/shield",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Runtime security for LLM apps and agents: prompt injection detection for user input and tool results, and leak, credential, PII, and exfiltration checks on model output",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -25,6 +25,11 @@
       "types": "./dist/providers/ai-sdk.d.ts",
       "import": "./dist/providers/ai-sdk.mjs",
       "require": "./dist/providers/ai-sdk.js"
+    },
+    "./ai-sdk/tools": {
+      "types": "./dist/providers/ai-sdk-tools.d.ts",
+      "import": "./dist/providers/ai-sdk-tools.mjs",
+      "require": "./dist/providers/ai-sdk-tools.js"
     },
     "./groq": {
       "types": "./dist/providers/groq.d.ts",
@@ -81,8 +86,9 @@
     "dev": "tsup --watch",
     "test": "bunx vitest run",
     "test:watch": "bunx vitest",
+    "test:package": "bun scripts/verify-package.ts",
     "typecheck": "tsc --noEmit -p .",
-    "prepublishOnly": "bun run typecheck && bun run test && bun run build",
+    "prepublishOnly": "bun run typecheck && bun run test && bun run build && bun run test:package",
     "test:integration": "bunx vitest run --config vitest.integration.config.ts",
     "benchmark": "bun run scripts/benchmark.ts",
     "serve": "bun run src/server/cli.ts"

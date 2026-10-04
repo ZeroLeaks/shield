@@ -84,6 +84,29 @@ const result = await generateText({ model, prompt: userInput });
 
 Pass `detect: shield.options()` to the other wrappers in the same way. Omitting it preserves the wrappers' existing local detection behavior. The AI SDK middleware waits for detection before the model call. The legacy `shieldMiddleware()` helper provides `await wrapParamsAsync(params)` for hosted detection; its synchronous `wrapParams()` accepts only local synchronous checks.
 
+## AI SDK inspection tool
+
+Shield 2.1.0 adds an inspection tool for AI SDK 5, 6, and 7:
+
+```typescript
+import { shieldCheck } from "@zeroleaks/shield/ai-sdk/tools";
+
+const check = shieldCheck(); // Local; no network or API key.
+const result = await check.execute(
+  { text: "The document's complete original text.", source: "document" },
+  {}
+);
+if (result.detected) {
+  throw new Error("The document was blocked.");
+}
+```
+
+Use `tools: { shieldCheck: shieldCheck() }` with `generateText` or `streamText` for model-invoked inspection. Pair it with `shieldLanguageModelMiddleware` for enforced checks before model calls: the model chooses whether to call the tool and which text to submit. A negative detection is not a guarantee of safety or permission to act. Tool execution errors become AI SDK `tool-error` parts; application code must decide whether the agent can continue.
+
+Configure local checks with `shieldCheck({ detect: { sensitivity: "strict" } })`, or opt into hosted checks with `shieldCheck({ hosted: { apiKey, model: "shield" } })`. Hosted checks always require complete coverage and throw on missing or truncated coverage. Local checks reject oversized input instead of silently truncating it. The executor accepts `{ abortSignal }` as its second argument.
+
+The new subpath requires `ai` 5 or later; AI SDK 7 requires Node.js 22+. Install `ai` and its `zod` peer alongside Shield. Other entry points still work without `ai` installed, and middleware retains SDK 4 support. See the [complete AI SDK tool guide](https://zeroleaks.ai/docs/shield-sdk/providers/ai-sdk-tools) for a runnable model example, result fields, access requirements, and limitations.
+
 ## Request options
 
 | Option | Default | Purpose |
