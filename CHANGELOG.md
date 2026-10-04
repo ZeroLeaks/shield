@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.1.2] - 2026-10-04
+
+- Corrected the canonical GitHub repository URL's capitalization to match GitHub Actions provenance. npm rejected the 2.1.1 upload because those identities differed; this version includes the inspection tool and release checks below.
+
 ## [2.1.1] - 2026-10-04
 
 - Fixed release verification for npm 12's package metadata format while retaining compatibility with earlier npm versions. Packed package names and versions are checked against the manifest, and publish dry runs still create and install real test artifacts.

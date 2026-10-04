@@ -4,7 +4,7 @@
 
 The public integration guide is `https://zeroleaks.ai/docs/shield-sdk/providers/ai-sdk-tools`. Its main example must match `entry.ts` exactly. The ZeroLeaks app's package verifier checks that parity; Shield's isolated package verifier type-checks and executes the registry snippet.
 
-Before submitting, confirm that npm serves `@zeroleaks/shield@2.1.1` and the integration guide is live. The source repository, README, public docs, and published package must describe the same exports and supported SDK versions.
+Before submitting, confirm that npm serves `@zeroleaks/shield@2.1.2` and the integration guide is live. The source repository, README, public docs, and published package must describe the same exports and supported SDK versions.
 
 Publishing uses the `NPM_TOKEN` Actions secret in the Shield repository's `npm` GitHub environment. The existing workflow configures npm authentication from that secret before publishing. Replace it with `gh secret set NPM_TOKEN --repo ZeroLeaks/shield --env npm`; paste the credential into the hidden prompt, and keep it out of source files.
 
@@ -14,7 +14,7 @@ To retry a release, run the current workflow and verify the registry version aft
 
 ```bash
 gh workflow run publish.yml --repo ZeroLeaks/shield --ref master -f dry_run=false -f npm_tag=latest
-npm view @zeroleaks/shield@2.1.1 version
+npm view @zeroleaks/shield@2.1.2 version
 ```
 
 Confirm the integration guide is deployed before submitting upstream. The app documentation PR requires a review before production deployment: https://github.com/x1xhlol/zeroleaks-v2/pull/229.
