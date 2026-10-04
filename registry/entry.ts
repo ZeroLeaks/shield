@@ -16,7 +16,7 @@ import { shieldLanguageModelMiddleware } from '@zeroleaks/shield/ai-sdk';
 import { shieldCheck } from '@zeroleaks/shield/ai-sdk/tools';
 
 const model = wrapLanguageModel({
-  model: gateway('openai/gpt-5-mini'),
+  model: gateway('openai/gpt-6.1-sol'),
   middleware: shieldLanguageModelMiddleware(),
 });
 
