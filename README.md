@@ -200,7 +200,7 @@ Every wrapper hardens the system prompt, runs its configured detector on user me
 | OpenAI | `shieldOpenAI` from `@zeroleaks/shield/openai` | `chat.completions.create`, `responses.create` |
 | Anthropic | `shieldAnthropic` from `@zeroleaks/shield/anthropic` | `messages.create` |
 | Groq | `shieldGroq` from `@zeroleaks/shield/groq` | `chat.completions.create` |
-| Vercel AI SDK 4, 5, 6 | `shieldLanguageModelMiddleware` from `@zeroleaks/shield/ai-sdk` | `generateText`, `streamText` via `wrapLanguageModel` |
+| Vercel AI SDK 4, 5, 6, 7 | `shieldLanguageModelMiddleware` from `@zeroleaks/shield/ai-sdk` | `generateText`, `streamText` via `wrapLanguageModel` |
 | Google Gen AI | `shieldGoogleGenAI` from `@zeroleaks/shield/google` | `models.generateContent`, `models.generateContentStream`, and chats |
 | Mistral | `shieldMistral` from `@zeroleaks/shield/mistral` | `chat.complete`, `chat.stream` |
 | LangChain.js | `shieldChatModel`, `ShieldCallbackHandler` from `@zeroleaks/shield/langchain` | `invoke`, `stream`, `batch`, and runnables derived from the model |

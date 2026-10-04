@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+- AI SDK 7 support, tested. `shieldLanguageModelMiddleware` works unchanged with AI SDK 7 (`ai@7`, `v4` language models) in `generateText` and `streamText`, and the test suite now runs it against AI SDK 4, 5, 6, and 7, including streaming, tool results, tool call arguments, `throwOnLeak`, and redaction.
+- The legacy `shieldMiddleware().wrapParams()` and `wrapParamsAsync()` now also harden AI SDK 7's `instructions` option, which replaces the deprecated `system`. Before, a system prompt passed as `instructions` reached the model unhardened.
+
 ## [2.0.0] - 2026-10-02
 
 - Root `detect()` now returns a Promise and calls the hosted Shield API with a dashboard key. `createHostedDetector()` supports the four hosted model IDs, self-hosted moderation endpoints, cancellation, timeouts, and provider wrapper options.

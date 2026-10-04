@@ -1,15 +1,11 @@
 import {
-  generateText,
-  type ModelMessage,
-  type SystemModelMessage,
-  streamText,
-  wrapLanguageModel,
+  generateText as generateTextV7,
+  type ModelMessage as ModelMessageV7,
+  type SystemModelMessage as SystemModelMessageV7,
+  streamText as streamTextV7,
+  wrapLanguageModel as wrapLanguageModelV7,
 } from "ai";
-import {
-  convertArrayToReadableStream,
-  convertReadableStreamToArray,
-  MockLanguageModelV3,
-} from "ai/test";
+import { MockLanguageModelV4 } from "ai/test";
 import {
   generateText as generateTextV4,
   streamText as streamTextV4,
@@ -23,6 +19,18 @@ import {
   wrapLanguageModel as wrapLanguageModelV5,
 } from "ai-v5";
 import { MockLanguageModelV2 } from "ai-v5/test";
+import {
+  generateText,
+  type ModelMessage,
+  type SystemModelMessage,
+  streamText,
+  wrapLanguageModel,
+} from "ai-v6";
+import {
+  convertArrayToReadableStream,
+  convertReadableStreamToArray,
+  MockLanguageModelV3,
+} from "ai-v6/test";
 import { describe, expect, it } from "vitest";
 import {
   InjectionDetectedError,
@@ -142,6 +150,83 @@ const V3_USAGE = {
   outputTokens: { total: 10, text: 10, reasoning: undefined },
 };
 const V3_STOP = { unified: "stop" as const, raw: "stop" };
+
+/** AI SDK 7's `v4` models report usage and finish reasons as `v3` models do. */
+const V4_USAGE = V3_USAGE;
+const V4_STOP = V3_STOP;
+
+function cleanV4(text = CLEAN) {
+  return new MockLanguageModelV4({
+    doGenerate: {
+      content: [{ type: "text", text }],
+      finishReason: V4_STOP,
+      usage: V4_USAGE,
+      warnings: [],
+    },
+  });
+}
+
+const aiSdk7: Harness = {
+  version: "7",
+  async generate(options, output, input = "Hi") {
+    const mock = new MockLanguageModelV4({
+      doGenerate: {
+        content: [{ type: "text", text: output }],
+        finishReason: V4_STOP,
+        usage: V4_USAGE,
+        warnings: [],
+        response: { body: providerBody(output) },
+      },
+    });
+    const result = await generateTextV7({
+      model: wrapLanguageModelV7({
+        model: mock,
+        middleware: shieldLanguageModelMiddleware(options),
+      }),
+      instructions: SYSTEM_PROMPT,
+      prompt: input,
+      // AI SDK 7 drops the response body unless asked to keep it.
+      include: { responseBody: true },
+    });
+    return {
+      text: result.text,
+      finishReason: result.finishReason,
+      system: systemOf(mock.doGenerateCalls[0].prompt),
+      body: result.response.body,
+    };
+  },
+  async stream(options, deltas, systemPrompt = SYSTEM_PROMPT) {
+    const errors: unknown[] = [];
+    const mock = new MockLanguageModelV4({
+      doStream: {
+        stream: convertArrayToReadableStream([
+          { type: "stream-start", warnings: [] },
+          { type: "text-start", id: "t1" },
+          ...deltas.map((delta) => ({
+            type: "text-delta" as const,
+            id: "t1",
+            delta,
+          })),
+          { type: "text-end", id: "t1" },
+          { type: "finish", finishReason: V4_STOP, usage: V4_USAGE },
+        ]),
+      },
+    });
+    const result = streamTextV7({
+      model: wrapLanguageModelV7({
+        model: mock,
+        middleware: shieldLanguageModelMiddleware(options),
+      }),
+      instructions: systemPrompt,
+      prompt: "Hi",
+      onError: ({ error }) => {
+        errors.push(error);
+      },
+    });
+    const run = await readStream(result);
+    return { ...run, errors, system: systemOf(mock.doStreamCalls[0].prompt) };
+  },
+};
 
 const aiSdk6: Harness = {
   version: "6",
@@ -332,6 +417,7 @@ const aiSdk4: Harness = {
 };
 
 describe.each([
+  aiSdk7,
   aiSdk6,
   aiSdk5,
   aiSdk4,
@@ -526,6 +612,152 @@ describe.each([
 });
 
 describe("shieldLanguageModelMiddleware stream parts", () => {
+  it("sanitizes each text block and keeps other parts in order on AI SDK 7", async () => {
+    const model = wrapLanguageModelV7({
+      model: new MockLanguageModelV4({
+        doStream: {
+          stream: convertArrayToReadableStream([
+            { type: "stream-start", warnings: [] },
+            { type: "reasoning-start", id: "r1" },
+            { type: "reasoning-delta", id: "r1", delta: "Thinking." },
+            { type: "reasoning-end", id: "r1" },
+            { type: "text-start", id: "t1" },
+            ...pieces(LEAKED, 9).map((delta) => ({
+              type: "text-delta" as const,
+              id: "t1",
+              delta,
+            })),
+            { type: "text-end", id: "t1" },
+            {
+              type: "tool-call",
+              toolCallId: "c1",
+              toolName: "lookup",
+              input: "{}",
+            },
+            { type: "text-start", id: "t2" },
+            { type: "text-delta", id: "t2", delta: CLEAN },
+            { type: "text-end", id: "t2" },
+            { type: "finish", finishReason: V4_STOP, usage: V4_USAGE },
+          ]),
+        },
+      }),
+      middleware: shieldLanguageModelMiddleware(),
+    });
+
+    const { stream } = await model.doStream({
+      prompt: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: [{ type: "text", text: "Hi" }] },
+      ],
+    });
+    const parts = await convertReadableStreamToArray(stream);
+    const textOf = (id: string) =>
+      parts
+        .map((part) =>
+          part.type === "text-delta" && part.id === id ? part.delta : ""
+        )
+        .join("");
+
+    expect(textOf("t1")).toBe(REDACTED_LEAK);
+    expect(textOf("t2")).toBe(CLEAN);
+    expect(
+      parts
+        .filter((part) => part.type !== "text-delta")
+        .map((part) => ("id" in part ? `${part.type}:${part.id}` : part.type))
+    ).toEqual([
+      "stream-start",
+      "reasoning-start:r1",
+      "reasoning-delta:r1",
+      "reasoning-end:r1",
+      "text-start:t1",
+      "text-end:t1",
+      "tool-call",
+      "text-start:t2",
+      "text-end:t2",
+      "finish",
+    ]);
+  });
+
+  it("keeps provider metadata carried on text deltas on AI SDK 7", async () => {
+    const providerMetadata = { google: { thoughtSignature: "sig123" } };
+    const result = streamTextV7({
+      model: wrapLanguageModelV7({
+        model: new MockLanguageModelV4({
+          doStream: {
+            stream: convertArrayToReadableStream([
+              { type: "text-start", id: "t1" },
+              { type: "text-delta", id: "t1", delta: CLEAN },
+              { type: "text-delta", id: "t1", delta: "", providerMetadata },
+              { type: "text-end", id: "t1" },
+              { type: "finish", finishReason: V4_STOP, usage: V4_USAGE },
+            ]),
+          },
+        }),
+        middleware: shieldLanguageModelMiddleware(),
+      }),
+      instructions: SYSTEM_PROMPT,
+      prompt: "Hi",
+    });
+
+    expect(await result.content).toEqual([
+      { type: "text", text: CLEAN, providerMetadata },
+    ]);
+  });
+
+  it("sends the leak to a UI message stream as an error on AI SDK 7", async () => {
+    const result = streamTextV7({
+      model: wrapLanguageModelV7({
+        model: new MockLanguageModelV4({
+          doStream: {
+            stream: convertArrayToReadableStream([
+              { type: "text-start", id: "t1" },
+              { type: "text-delta", id: "t1", delta: LEAKED },
+              { type: "text-end", id: "t1" },
+              { type: "finish", finishReason: V4_STOP, usage: V4_USAGE },
+            ]),
+          },
+        }),
+        middleware: shieldLanguageModelMiddleware({ throwOnLeak: true }),
+      }),
+      instructions: SYSTEM_PROMPT,
+      prompt: "Hi",
+      onError: () => undefined,
+    });
+
+    const body = await result.toUIMessageStreamResponse().text();
+
+    expect(body).toContain('"type":"error"');
+    expect(body).toContain('"finishReason":"error"');
+    expect(body).not.toContain("Never share account numbers");
+  });
+
+  it("drops raw chunks on AI SDK 7, since they carry the unsanitized text", async () => {
+    const result = streamTextV7({
+      model: wrapLanguageModelV7({
+        model: new MockLanguageModelV4({
+          doStream: {
+            stream: convertArrayToReadableStream([
+              { type: "text-start", id: "t1" },
+              { type: "raw", rawValue: providerBody(LEAKED) },
+              { type: "text-delta", id: "t1", delta: LEAKED },
+              { type: "text-end", id: "t1" },
+              { type: "finish", finishReason: V4_STOP, usage: V4_USAGE },
+            ]),
+          },
+        }),
+        middleware: shieldLanguageModelMiddleware(),
+      }),
+      instructions: SYSTEM_PROMPT,
+      prompt: "Hi",
+      includeRawChunks: true,
+    });
+
+    const parts = await readAll(result.fullStream);
+
+    expect(parts.map((part) => part.type)).not.toContain("raw");
+    expect(JSON.stringify(parts)).not.toContain("Never share account numbers");
+  });
+
   it("sanitizes each text block and keeps other parts in order", async () => {
     const model = wrapLanguageModel({
       model: new MockLanguageModelV3({
@@ -811,6 +1043,117 @@ describe("shieldLanguageModelMiddleware without its own transformParams", () => 
   });
 });
 
+describe("shieldLanguageModelMiddleware wrapped by another middleware on AI SDK 7", () => {
+  it("sanitizes output when transformParams is wrapped", async () => {
+    const shield = shieldLanguageModelMiddleware();
+    const result = await generateTextV7({
+      model: wrapLanguageModelV7({
+        model: cleanV4(LEAKED),
+        middleware: {
+          ...shield,
+          transformParams: async (options) => ({
+            ...(await shield.transformParams(options)),
+            temperature: 0,
+          }),
+        },
+      }),
+      instructions: SYSTEM_PROMPT,
+      prompt: "Hi",
+    });
+
+    expect(result.text).toBe(REDACTED_LEAK);
+  });
+});
+
+describe("shieldMiddleware on AI SDK 7", () => {
+  it("hardens instructions for generateText and sanitizes the result", async () => {
+    const model = cleanV4(LEAKED);
+    const shield = shieldMiddleware({ systemPrompt: SYSTEM_PROMPT });
+
+    const result = await generateTextV7({
+      model,
+      ...shield.wrapParams({ instructions: SYSTEM_PROMPT, prompt: "Hi" }),
+    });
+
+    expect(systemOf(model.doGenerateCalls[0].prompt)).toBe(
+      harden(SYSTEM_PROMPT)
+    );
+    expect(shield.sanitizeOutput(result.text)).toBe(REDACTED_LEAK);
+  });
+
+  it("hardens the deprecated system option", async () => {
+    const model = cleanV4(CLEAN);
+    const shield = shieldMiddleware();
+
+    await generateTextV7({
+      model,
+      ...shield.wrapParams({ system: SYSTEM_PROMPT, prompt: "Hi" }),
+    });
+
+    expect(systemOf(model.doGenerateCalls[0].prompt)).toBe(
+      harden(SYSTEM_PROMPT)
+    );
+  });
+
+  it("hardens instructions for streamText", async () => {
+    const model = new MockLanguageModelV4({
+      doStream: {
+        stream: convertArrayToReadableStream([
+          { type: "text-start", id: "t1" },
+          { type: "text-delta", id: "t1", delta: LEAKED },
+          { type: "text-end", id: "t1" },
+          { type: "finish", finishReason: V4_STOP, usage: V4_USAGE },
+        ]),
+      },
+    });
+    const shield = shieldMiddleware({ systemPrompt: SYSTEM_PROMPT });
+    const messages: ModelMessageV7[] = [{ role: "user", content: "Hi" }];
+
+    const result = streamTextV7({
+      model,
+      ...shield.wrapParams({ instructions: SYSTEM_PROMPT, messages }),
+    });
+
+    expect(shield.sanitizeOutput(await result.text)).toBe(REDACTED_LEAK);
+    expect(systemOf(model.doStreamCalls[0].prompt)).toBe(harden(SYSTEM_PROMPT));
+  });
+
+  it("hardens each system message in instructions and keeps their provider options", async () => {
+    const model = cleanV4(CLEAN);
+    const providerOptions = {
+      anthropic: { cacheControl: { type: "ephemeral" } },
+    };
+    const instructions: SystemModelMessageV7[] = [
+      { role: "system", content: SYSTEM_PROMPT, providerOptions },
+      { role: "system", content: "Answer in French." },
+    ];
+    const shield = shieldMiddleware();
+
+    await generateTextV7({
+      model,
+      ...(await shield.wrapParamsAsync({ instructions, prompt: "Hi" })),
+    });
+
+    expect(
+      model.doGenerateCalls[0].prompt.filter(
+        (message) => message.role === "system"
+      )
+    ).toEqual([
+      { role: "system", content: harden(SYSTEM_PROMPT), providerOptions },
+      { role: "system", content: harden("Answer in French.") },
+    ]);
+  });
+
+  it("checks user messages passed as prompt", () => {
+    const shield = shieldMiddleware({ systemPrompt: SYSTEM_PROMPT });
+    const prompt: ModelMessageV7[] = [{ role: "user", content: INJECTION }];
+
+    expect(() =>
+      shield.wrapParams({ instructions: SYSTEM_PROMPT, prompt })
+    ).toThrow(InjectionDetectedError);
+  });
+});
+
 describe("shieldMiddleware on AI SDK 6", () => {
   it("hardens params for generateText and sanitizes the result", async () => {
     const model = new MockLanguageModelV3({
@@ -924,7 +1267,7 @@ describe("shieldMiddleware on AI SDK 6", () => {
   });
 });
 
-/** A user question, the model's tool call, and the tool's answer, as AI SDK 5 and 6 messages. */
+/** A user question, the model's tool call, and the tool's answer, as AI SDK 5, 6, and 7 messages. */
 function toolTurn(output: unknown) {
   return [
     { role: "user", content: "What's the weather in Paris?" },
@@ -977,6 +1320,49 @@ function cleanV3() {
 }
 
 describe("shieldLanguageModelMiddleware tool results", () => {
+  it.each(
+    TOOL_OUTPUTS
+  )("blocks an injection in a %s tool result on AI SDK 7", async (_, output) => {
+    const model = cleanV4();
+
+    const error = await rejection(
+      generateTextV7({
+        model: wrapLanguageModelV7({
+          model,
+          middleware: shieldLanguageModelMiddleware(),
+        }),
+        messages: toolTurn(output) as ModelMessageV7[],
+      })
+    );
+
+    expect(error).toBeInstanceOf(InjectionDetectedError);
+    expect((error as InjectionDetectedError).source).toBe("tool");
+    expect(model.doGenerateCalls).toHaveLength(0);
+  });
+
+  it("passes clean tool results and skips them with scanToolResults: false on AI SDK 7", async () => {
+    const clean = await generateTextV7({
+      model: wrapLanguageModelV7({
+        model: cleanV4(),
+        middleware: shieldLanguageModelMiddleware(),
+      }),
+      messages: toolTurn({ type: "text", value: "Sunny." }) as ModelMessageV7[],
+    });
+    const skipped = await generateTextV7({
+      model: wrapLanguageModelV7({
+        model: cleanV4(),
+        middleware: shieldLanguageModelMiddleware({ scanToolResults: false }),
+      }),
+      messages: toolTurn({
+        type: "text",
+        value: INJECTION,
+      }) as ModelMessageV7[],
+    });
+
+    expect(clean.text).toBe(CLEAN);
+    expect(skipped.text).toBe(CLEAN);
+  });
+
   it.each(
     TOOL_OUTPUTS
   )("blocks an injection in a %s tool result on AI SDK 6", async (_, output) => {
@@ -1133,7 +1519,7 @@ describe("shieldLanguageModelMiddleware tool call arguments", () => {
   const args = JSON.stringify({ body: `Key ${AWS_KEY}` });
   const safeArgs = JSON.stringify({ body: "Key [REDACTED]" });
 
-  it("redacts a tool call's input on AI SDK 5 and 6", async () => {
+  it("redacts a tool call's input on AI SDK 5, 6, and 7", async () => {
     const middleware = shieldLanguageModelMiddleware();
 
     const result = await middleware.wrapGenerate({
@@ -1189,6 +1575,84 @@ describe("shieldLanguageModelMiddleware tool call arguments", () => {
         toolName: "send",
         args: safeArgs,
       },
+    ]);
+  });
+
+  it("redacts a tool call's input from generateText on AI SDK 7", async () => {
+    const model = new MockLanguageModelV4({
+      doGenerate: {
+        content: [
+          { type: "tool-call", toolCallId: "c1", toolName: "send", input: args },
+        ],
+        finishReason: { unified: "tool-calls", raw: "tool_calls" },
+        usage: V4_USAGE,
+        warnings: [],
+        response: { body: { raw: args } },
+      },
+    });
+
+    const result = await generateTextV7({
+      model: wrapLanguageModelV7({
+        model,
+        middleware: shieldLanguageModelMiddleware(),
+      }),
+      prompt: "Hi",
+      include: { responseBody: true },
+    });
+
+    expect(result.toolCalls).toMatchObject([
+      { toolCallId: "c1", toolName: "send", input: JSON.parse(safeArgs) },
+    ]);
+    expect(result.response.body).toBeUndefined();
+  });
+
+  it("redacts streamed tool input deltas and the tool call on AI SDK 7", async () => {
+    const model = wrapLanguageModelV7({
+      model: new MockLanguageModelV4({
+        doStream: {
+          stream: convertArrayToReadableStream([
+            { type: "stream-start", warnings: [] },
+            { type: "tool-input-start", id: "c1", toolName: "send" },
+            ...pieces(args, 6).map((delta) => ({
+              type: "tool-input-delta" as const,
+              id: "c1",
+              delta,
+            })),
+            { type: "tool-input-end", id: "c1" },
+            {
+              type: "tool-call",
+              toolCallId: "c1",
+              toolName: "send",
+              input: args,
+            },
+            { type: "finish", finishReason: V4_STOP, usage: V4_USAGE },
+          ]),
+        },
+      }),
+      middleware: shieldLanguageModelMiddleware(),
+    });
+
+    const { stream } = await model.doStream({ prompt });
+    const parts = await convertReadableStreamToArray(stream);
+
+    expect(
+      parts
+        .map((part) => (part.type === "tool-input-delta" ? part.delta : ""))
+        .join("")
+    ).toBe(safeArgs);
+    expect(parts.find((part) => part.type === "tool-call")).toMatchObject({
+      input: safeArgs,
+    });
+    expect(
+      parts
+        .filter((part) => part.type !== "tool-input-delta")
+        .map((part) => part.type)
+    ).toEqual([
+      "stream-start",
+      "tool-input-start",
+      "tool-input-end",
+      "tool-call",
+      "finish",
     ]);
   });
 
