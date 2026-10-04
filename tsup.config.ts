@@ -9,6 +9,7 @@ export default defineConfig({
     "providers/anthropic": "src/providers/anthropic.ts",
     "providers/groq": "src/providers/groq.ts",
     "providers/ai-sdk": "src/providers/ai-sdk.ts",
+    "providers/ai-sdk-tools": "src/providers/ai-sdk-tools.ts",
     "providers/google": "src/providers/google.ts",
     "providers/mistral": "src/providers/mistral.ts",
     "providers/langchain": "src/providers/langchain.ts",

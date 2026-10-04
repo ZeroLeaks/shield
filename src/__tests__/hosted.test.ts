@@ -1,5 +1,5 @@
 import { generateText, wrapLanguageModel } from "ai";
-import { MockLanguageModelV3 } from "ai/test";
+import { MockLanguageModelV4 } from "ai/test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { detectAsync } from "../detect";
 import { InjectionDetectedError } from "../errors";
@@ -460,7 +460,7 @@ describe("hosted detection", () => {
           : new Response("Unavailable", { status: 503 })
       );
     const hosted = createHostedDetector({ apiKey: API_KEY, fetch: fetcher });
-    const provider = new MockLanguageModelV3();
+    const provider = new MockLanguageModelV4();
     const model = wrapLanguageModel({
       model: provider,
       middleware: shieldLanguageModelMiddleware({ detect: hosted.options() }),
