@@ -4,7 +4,7 @@ Adds [ZeroLeaks Shield](https://zeroleaks.ai/shield) to the tools registry with 
 
 The entry links directly to the [AI SDK integration guide](https://zeroleaks.ai/docs/shield-sdk/providers/ai-sdk-tools). Its example uses current AI SDK imports, AI Gateway, and `isStepCount`. Local detection needs no ZeroLeaks key; the Gateway model needs `AI_GATEWAY_API_KEY`.
 
-Validation for Shield 2.1.1:
+Validation for Shield 2.1.2:
 
 - 1,263 passing tests, with two optional model tests skipped.
 - Isolated packed-package consumers on AI SDK 5.0.267, 6.0.292, and 7.0.127, covering generation, streaming, malformed inputs, hosted errors, and middleware blocking.

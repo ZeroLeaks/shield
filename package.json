@@ -1,6 +1,6 @@
 {
   "name": "@zeroleaks/shield",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "Runtime security for LLM apps and agents: prompt injection detection for user input and tool results, and leak, credential, PII, and exfiltration checks on model output",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -95,7 +95,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/zeroleaks/shield"
+    "url": "https://github.com/ZeroLeaks/shield"
   },
   "homepage": "https://zeroleaks.ai/docs/shield-sdk",
   "bugs": {
