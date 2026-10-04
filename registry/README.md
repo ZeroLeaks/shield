@@ -6,6 +6,19 @@ The public integration guide is `https://zeroleaks.ai/docs/shield-sdk/providers/
 
 Before submitting, confirm that npm serves `@zeroleaks/shield@2.1.1` and the integration guide is live. The source repository, README, public docs, and published package must describe the same exports and supported SDK versions.
 
+The 2.1.1 release passed code and package checks but npm rejected authentication (`ENEEDAUTH`). It is not published yet. No npm token is configured in the repository or its `npm` environment. The app documentation PR also requires a review before production deployment: https://github.com/x1xhlol/zeroleaks-v2/pull/229.
+
+An npm package administrator can authorize the existing workflow in the package's [trusted publisher settings](https://www.npmjs.com/package/@zeroleaks/shield/access), following [npm's instructions](https://docs.npmjs.com/trusted-publishers/). Use the exact GitHub owner `ZeroLeaks`, repository `shield`, workflow filename `publish.yml`, and environment `npm`. Permit direct `npm publish`; staged-only permission will not publish this release. The workflow already uses GitHub-hosted runners, Node 24, current npm, and `id-token: write`.
+
+After authorization, retry the existing release run, then verify the registry version:
+
+```bash
+gh run rerun 37224605299 --repo ZeroLeaks/shield --failed
+npm view @zeroleaks/shield@2.1.1 version
+```
+
+Once npm serves the release, update the GitHub release's pending status and remove this publication-blocker note. Confirm the integration guide is deployed before submitting upstream.
+
 Run the release checks from the Shield repository:
 
 ```bash
