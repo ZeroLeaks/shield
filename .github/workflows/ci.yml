@@ -15,6 +15,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -30,6 +34,9 @@ jobs:
 
       - name: Build
         run: bun run build
+
+      - name: Match npm publishing environment
+        run: npm install --global npm@latest
 
       - name: Validate package contents
         run: npm pack --dry-run
